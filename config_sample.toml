@@ -1,0 +1,25 @@
+epochs = 1000
+episode_max_length = 100
+replay_buffer_capacity = 100000
+batch_size = 5000
+checkpoint_interval = 10
+checkpoint = ''
+
+
+[agent]
+gamma = 0.99
+tau = 0.005
+alpha = 0.2
+target_update_interval = 1
+automatic_entropy_tuning = true
+learning_rate = 0.0001
+hidden_size = 64
+
+[vime]
+lambda = 0.01
+eta = 0.1
+batch_size = 10
+update_iterations = 500
+hidden_size = 64
+D_KL_smooth_length = 10
+learning_rate = 0.0001

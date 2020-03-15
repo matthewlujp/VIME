@@ -1,0 +1,10 @@
+gym
+plotly
+tqdm
+toml
+matplotlib
+numpy
+torch
+torchvision
+opencv-python
+roboschool
