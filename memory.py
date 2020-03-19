@@ -48,6 +48,7 @@ class ReplayBuffer:
         """Return a tuple of batch data.
         batch_s, batch_a, batch_r, batch_s', batch_t
         """
+        batch_size = min(batch_size, len(self))
         observations = self._observations[np.random.choice(range(len(self)), batch_size)]
         actions = self._actions[np.random.choice(range(len(self)), batch_size)]
         rewards = self._rewards[np.random.choice(range(len(self)), batch_size)]

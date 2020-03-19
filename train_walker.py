@@ -66,7 +66,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     # Training set up
     agent = SAC(env.observation_space, env.action_space, device, **conf.agent)
     memory = ReplayBuffer(conf.replay_buffer_capacity, env.observation_space.shape, env.action_space.shape)
-    vime = VIME(conf.vime) if use_vime else None
+    vime = VIME(env.observation_space.shape[0], env.action_space.shape[0], **conf.vime) if use_vime else None
     # Load checkpoint if specified in config
     if conf.checkpoint != '':
         ckpt = torch.load(conf.checkpoint)
@@ -80,7 +80,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         ckpt = {'metrics': metrics, 'agent': agent.state_dict(), 'memory': memory.state_dict()}
         if use_vime:
             ckpt['vime'] = vime.state_dict()
-        path = os.path.join(ckpt_dir, 'checkpoint')
+        path = os.path.join(ckpt_dir, 'checkpoint.pth')
         torch.save(ckpt, path)
 
     # Train agent
@@ -135,22 +135,39 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             lineplot(metrics['epoch'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
             multiple_lineplot(metrics['epoch'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
 
-
-
         # Save checkpoint
         if epoch % conf.checkpoint_interval == 0:
             save_checkpoint()
-            
 
     save_checkpoint()
     # Save the final model
-    torch.save(agent.state_dict(), os.path.join(ckpt_dir, 'final_model.pth'))
+    torch.save({'agent': agent.state_dict()}, os.path.join(ckpt_dir, 'final_model.pth'))
     
 
 
 
+def evaluate(config_file_path: str, model_filepath: str, max_episode_length: int, render: bool):
+    conf_d = toml.load(open(config_file_path))
+    conf = namedtuple('Config', conf_d.keys())(*conf_d.values())
 
-def collect_samples(env, agent, episode_max_length):
+    # Set random variable
+    np.random.seed(int(time.time()))
+    torch.manual_seed(int(time.time()))
+    device = torch.device('cpu')
+
+    env = gym.make(ENV_NAME)
+    agent = SAC(env.observation_space, env.action_space, device, **conf.agent)
+    ckpt = torch.load(model_filepath, map_location='cpu')
+    agent.load_state_dict(ckpt['agent'])
+
+    _, total_reward = collect_samples(env, agent, max_episode_length, evaluate=True, render=render)
+    print("REWARD {}".format(total_reward))
+    input("OK? >")
+
+
+
+
+def collect_samples(env, agent, episode_max_length, evaluate=False, render=False):
     """Run for one episode using a given agent.
     Return
     ---
@@ -160,22 +177,21 @@ def collect_samples(env, agent, episode_max_length):
     trajectory = []
     total_reward = 0
 
-    # print("start trajectory ......")
     o = env.reset()
+    if render:
+        env.render()
     for _ in range(episode_max_length):
-        a = agent.select_action(o)
+        a = agent.select_action(o, eval=evaluate)
         o_next, r, done, _ = env.step(a)
         total_reward += r
         trajectory.append((o, a, r, o_next, done))
         if done:
             break
-    # print("end trajectory")
     return trajectory, total_reward
+
+
     
-
-
-
-
+    
 
 
 
@@ -185,6 +201,13 @@ if __name__ == '__main__':
     parser.add_argument('--save-dir', default=os.path.join('results', 'test'), help='Save directory')
     parser.add_argument('--vime', action='store_true', help='Whether to use VIME.')
     parser.add_argument('--device', default='cpu', choices={'cpu', 'cuda:0', 'cuda:1', 'cuda:2', 'cuda:3'}, help='Device for computation.')
+    parser.add_argument('-e', '--eval', action='store_true', help='Run model evaluation.')
+    parser.add_argument('-m', '--model-filepath', default='', help='Path to trained model for evaluation.')
+    parser.add_argument('-r', '--render', action='store_true', help='Render agent behavior during evaluation.')
+    parser.add_argument('--max-episode-length', type=int, default=100000, help='Max episode duration for evaluation.')
     args = parser.parse_args()
 
-    train(args.config, args.save_dir, args.vime, args.device)
+    if args.eval:
+        evaluate(args.config, args.model_filepath, args.max_episode_length, args.render)
+    else:
+        train(args.config, args.save_dir, args.vime, args.device)

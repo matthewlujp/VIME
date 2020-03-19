@@ -91,7 +91,6 @@ class SAC(Agent):
         assert reward_batch.size() == torch.Size([batch_size, 1]), reward_batch.size()
         assert term_batch.size() == torch.Size([batch_size, 1]), term_batch.size()
 
-
         with torch.no_grad():
             next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
             qf1_next_target, qf2_next_target = self.critic_target(next_state_batch, next_state_action)
