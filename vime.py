@@ -15,11 +15,7 @@ class VIME(nn.Module):
         '_D_KL_smooth_length', '_prev_D_KL_medians',
         '_eta', '_lamb',
         '_dynamics_model',
-<<<<<<< HEAD
         '_params_mu', '_params_rho',
-=======
-        '_params',
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
         '_optim',
     ]
 
@@ -32,11 +28,7 @@ class VIME(nn.Module):
         self._lamb = lamb
 
         self._D_KL_smooth_length = D_KL_smooth_length
-<<<<<<< HEAD
         self._prev_D_KL_medians = deque(maxlen=D_KL_smooth_length)
-=======
-        self._prev_D_KL_medians = Queue(maxsize=D_KL_smooth_length)
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
 
         self._dynamics_model = BNN(observation_size, action_size, hidden_size)
         self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number))
@@ -48,11 +40,7 @@ class VIME(nn.Module):
         if len(self._prev_D_KL_medians) == 0:
             relative_gains = info_gains
         else:
-<<<<<<< HEAD
             relative_gains = info_gains / np.mean(self._prev_D_KL_medians)
-=======
-            relative_gains = info_gains / np.mean(self._prev_D_KL_medians.queue)
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
         return rewards + self._eta * relative_gains
 
     def memorize_episodic_info_gains(self, info_gains: np.array):
@@ -66,7 +54,6 @@ class VIME(nn.Module):
     def calc_info_gain(self, s, a, s_next):
         """Calculate information gain D_KL[ q( /cdot | \phi') || q( /cdot | \phi_n) ].
         """
-<<<<<<< HEAD
         self._dynamics_model.set_params(self._params_mu, self._params_rho)        
         ll = self._dynamics_model.calc_log_likelihood(
             torch.tensor(s_next, dtype=torch.float32).unsqueeze(0),
@@ -78,12 +65,6 @@ class VIME(nn.Module):
         assert not np.isnan(nabla).any(), "ll {}\nnabla {}".format(ll, nabla)
         H = self._calc_hessian()
         assert not np.isnan(H).any(), H
-=======
-        l = self.calc_log_likelihood(torch.tensor(s, dtype=torch.float32).unsqueeze(0), torch.tensor(a, dtype=torch.float32).unsqueeze(0), torch.tensor(s_next, dtype=torch.float32).unsqueeze(0)).squeeze(0)
-        (-l).backward()  # Maximize ELBO
-        nabla = torch.cat([self._params_mu.grad, self._params_mu.grad])
-        H = self._calc_hessian(self)
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
 
         # \frac{\lambda^2}{2} (\nabla_\phi l)^{\rm T} H^{-1} (\nabla_\phi^{\rm T} l)
         with torch.no_grad():
@@ -95,10 +76,6 @@ class VIME(nn.Module):
         \frac{\partial^2 l_{D_{KL}}}{{\partial \mu_j}^2} = - \frac{1}{\log^2 (1 + e^{\phi_j})}
         \frac{\partial^2 l_{D_{KL}}}{{\partial \rho_j}^2} = - \frac{1}{\log^2 (1 + e^{\phi_j})} \frac{2 e^{2 \rho_j}}{(1 + e^{rho_j})^2}
         """
-<<<<<<< HEAD
-=======
-        params_num = len(self._params_mu)
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
         with torch.no_grad():
             H_mu = - torch.log(1 + self._params_rho.exp()).pow(-2)
             H_rho = - 2 * (2 * self._params_rho).exp() / torch.log(1 + self._params_rho.exp()).pow(2) / (1 + self._params_rho.exp()).pow(2)
@@ -119,11 +96,7 @@ class VIME(nn.Module):
             div_kl = self._calc_div_kl(prev_mu, prev_var)
 
             elbo = log_likelihood - div_kl
-<<<<<<< HEAD
             self._optim.zero_grad()
-=======
-            self._optime.zero_grad()
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
             (-elbo).backward()
             self._optim.step()
 
@@ -140,13 +113,8 @@ class VIME(nn.Module):
         """Calculate D_{KL} [ q(\cdot | \phi) || q(\cdot | \phi_n) ]
         = \frac{1}{2} \sum^d_i [ \log(var_{ni}) - \log(var_i) + \frac{var_i}{var_{ni}} + \frac{(\mu_i - \mu_{ni})^2}{var_{ni}} ] - \frac{d}{2}
         """
-<<<<<<< HEAD
         var = (1 + self._params_rho.exp()).log().pow(2)
         return .5 * (prev_var.log() - var.log() + var / prev_var + (self._params_mu - prev_mu).pow(2) / var.data).sum() - .5 * len(self._params_mu)
-=======
-        vars = (1 + self._parms_rho.exp()).log().pow(2)
-        return .5 * (vars.data.log() - vars.log() + vars / vars.data + (self._params_mu - self._params_mu.data).pow(2) / vars.data).sum() - .5 * len(self._params_mu)
->>>>>>> bf9808f83f1b8bac9abf119a86a7703a20778d85
 
     def state_dict(self):
         return {
