@@ -97,7 +97,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             else:
                 pbar.set_description("EPOCH {} --- Reward {:.2f} (moving average {:.2f})".format(epoch, reward_prev, reward_moving_avg))
         else:
-            pbar.set_description("EPOCH {}")
+            pbar.set_description("EPOCH {}".format(epoch))
 
         # Collect samples
         trajectory_samples, total_reward = collect_samples(env, agent, conf.episode_max_length)  # list of (s, a, r, s', t)

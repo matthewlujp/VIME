@@ -209,8 +209,9 @@ class BNN:
 
         gamma = X @ W_mu + b_mu
         assert not torch.isnan(gamma).any(), gamma
-        delta = X @ W_var
+        delta = X.pow(2) @ W_var
         assert not torch.isnan(delta).any(), delta
+        assert not torch.isnan(delta.pow(.5)).any(), delta.pow(.5)
         zeta = Normal(torch.zeros_like(delta), torch.ones_like(delta)).sample()
         assert not torch.isnan(zeta).any(), zeta
         r = gamma + delta.pow(0.5) * zeta
