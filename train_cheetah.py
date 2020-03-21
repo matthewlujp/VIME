@@ -125,6 +125,9 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         for (s, a, _, s_next, t), r in zip(trajectory_samples, rewards):
             memory.append(s, a, r, s_next, t)
 
+        if memory.step < conf.random_sample_num:
+            continue
+
         # Update parameters
         batch_data = memory.sample(conf.batch_size)
         q1_loss, q2_loss, policy_loss, alpha_loss, alphas = agent.update_parameters(batch_data, epoch)

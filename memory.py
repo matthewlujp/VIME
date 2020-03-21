@@ -7,7 +7,7 @@ class ReplayBuffer:
     _ATTRIBUTES_TO_SAVE = [
         '_observation_size', '_action_size',
         '_observations', '_actions', '_next_observations', '_rewards', '_terminates',
-        '_idx', 'capacity', 'full',
+        '_idx', 'step', 'capacity', 'full',
     ]
 
     def __init__(self, capacity: int, observation_size: tuple, action_size: tuple):
@@ -21,6 +21,7 @@ class ReplayBuffer:
         self._rewards = np.empty((capacity, 1), dtype=np.float32)
 
         self._idx = 0
+        self.step = 0
         self.capacity = capacity
         self.full = False
 
@@ -38,6 +39,7 @@ class ReplayBuffer:
         self._terminates[self._idx][0] = float(t)
 
         self._idx += 1
+        self.step += 1
         self.full |= (self._idx >= self.capacity)
         self._idx %= self.capacity
 
