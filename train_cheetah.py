@@ -133,8 +133,10 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             print("--- START PARAMETER UPDATE ---")
 
         # Update parameters
-        batch_data = memory.sample(conf.batch_size)
-        q1_loss, q2_loss, policy_loss, alpha_loss, alphas = agent.update_parameters(batch_data, epoch)
+        for _ in range(len(trajectory_samples)):
+            batch_data = memory.sample(conf.batch_size)
+            q1_loss, q2_loss, policy_loss, alpha_loss, alphas = agent.update_parameters(batch_data, epoch)
+
         metrics['q1_loss'].append(q1_loss)
         metrics['policy_loss'].append(policy_loss)
         metrics['alpha_loss'].append(alpha_loss)
