@@ -51,11 +51,12 @@ class ReplayBuffer:
         batch_s, batch_a, batch_r, batch_s', batch_t
         """
         batch_size = min(batch_size, len(self))
-        observations = self._observations[np.random.choice(range(len(self)), batch_size)]
-        actions = self._actions[np.random.choice(range(len(self)), batch_size)]
-        rewards = self._rewards[np.random.choice(range(len(self)), batch_size)]
-        next_observations = self._next_observations[np.random.choice(range(len(self)), batch_size)]
-        terminates = self._terminates[np.random.choice(range(len(self)), batch_size)]
+        indexes = np.random.choice(range(len(self)), batch_size)
+        observations = self._observations[indexes]
+        actions = self._actions[indexes]
+        rewards = self._rewards[indexes]
+        next_observations = self._next_observations[indexes]
+        terminates = self._terminates[indexes]
         return observations, actions, rewards, next_observations, terminates
 
     def state_dict(self):
