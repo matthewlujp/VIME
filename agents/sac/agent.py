@@ -18,7 +18,6 @@ class SAC(Agent):
         'critic', 'critic_optim', 'critic_target',
         'policy', 'policy_optim',
         'target_entropy', 'alpha', 'log_alpha', 'alpha_optim',
-        '_is_updated',
     ]
 
     def __init__(
@@ -50,14 +49,10 @@ class SAC(Agent):
         self.policy = GaussianPolicy(observation_space.shape[0], action_space.shape[0], hidden_size, action_space).to(self.device)
         self.policy_optim = Adam(self.policy.parameters(), lr=learning_rate)
 
-        self._observation_space = observation_space
-        self._action_space = action_space
-        self._is_updated = False
+        self._observation_shape = observation_space.shape
+        self._action_shape = action_space.shape
 
     def select_action(self, state, eval=False):
-        if not self._is_updated:
-            return self._action_space.sample()
-
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if eval == False:
             action, _, _ = self.policy.sample(state)
@@ -85,9 +80,9 @@ class SAC(Agent):
         term_batch = torch.FloatTensor(term_batch).to(self.device)
 
         batch_size = state_batch.size(0)
-        assert state_batch.size() == torch.Size([batch_size, *self._observation_space.shape]), state_batch.size()
-        assert next_state_batch.size() == torch.Size([batch_size, *self._observation_space.shape]), next_state_batch.size()
-        assert action_batch.size() == torch.Size([batch_size, *self._action_space.shape]), action_batch.size()
+        assert state_batch.size() == torch.Size([batch_size, *self._observation_shape]), state_batch.size()
+        assert next_state_batch.size() == torch.Size([batch_size, *self._observation_shape]), next_state_batch.size()
+        assert action_batch.size() == torch.Size([batch_size, *self._action_shape]), action_batch.size()
         assert reward_batch.size() == torch.Size([batch_size, 1]), reward_batch.size()
         assert term_batch.size() == torch.Size([batch_size, 1]), term_batch.size()
 
@@ -135,8 +130,6 @@ class SAC(Agent):
 
         if current_epoch % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
-
-        self._is_updated = True
 
         return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
 

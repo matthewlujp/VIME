@@ -87,67 +87,77 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     # Train agent
     init_epoch = 0 if len(metrics['epoch']) == 0 else metrics['epoch'][-1] + 1
     pbar = tqdm.tqdm(range(init_epoch, conf.epochs))
-    reward_prev = None
-    curiosity_reward_prev = None
     reward_moving_avg = None
     moving_avg_coef = 0.1
+    agent_update_count = 0
+
     for epoch in pbar:
-        if reward_prev: 
-            if use_vime:
-                pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f}  Curiosity Reward {:.2f} (moving average {:.2f})".format(epoch, len(memory), reward_prev, curiosity_reward_prev, reward_moving_avg))
+        o = env.reset()
+        rewards, curiosity_rewards = [], []
+        info_gains = []
+        q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
+        for t in range(env._max_episode_steps):
+            if len(memory) < conf.random_sample_num:
+                a = env.action_space.sample()
             else:
-                pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f} (moving average {:.2f})".format(epoch, len(memory), reward_prev, reward_moving_avg))
-        else:
-            pbar.set_description("EPOCH {} ({} samples)".format(epoch, len(memory)))
+                a = agent.select_action(o, eval=False)
+
+            o_next, r, done, _ = env.step(a)
+
+            rewards.append(r)
+            # Calculate curiosity reward in VIME
+            if use_vime:
+                info_gain = vime.calc_info_gain(o, a, o_next)
+                info_gains.append(info_gain)
+                r = vime.calc_curiosity_reward(r, info_gain)
+            curiosity_rewards.append(r)
+
+            done = False if t == env._max_episode_steps - 1 else bool(done)  # done should be False if an episode is terminated forcefully
+
+            memory.append(o, a, r, o_next, done)
+            o = o_next
 
 
-        # Collect samples
-        trajectory_samples, total_reward = collect_samples(env, agent, conf.episode_max_length)  # list of (s, a, r, s', t)
-        reward_prev = total_reward
-        reward_moving_avg = total_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * total_reward
-        assert len(trajectory_samples[0]) == 5 and isinstance(trajectory_samples[0], tuple), trajectory_samples[0]
-        if use_vime:
-            # Calculate D_KL to obtain surrogate reward r' = r + \eta D_KL
-            info_gains = np.array([vime.calc_info_gain(s, a, s_next) for (s, a, _, s_next, _) in trajectory_samples])
-            rewards_org = np.array([r for (_, _, r, _, _) in trajectory_samples])
-            rewards = vime.calc_curiosity_reward(rewards_org, info_gains)
-            curiosity_reward_prev = rewards.sum()
-            vime.memorize_episodic_info_gains(info_gains)            
-        else:
-            rewards_org = [r for (_, _, r, _, _) in trajectory_samples]
-            rewards = rewards_org
+            # Update agent
+            if len(memory) >= conf.random_sample_num:
+                for _ in range(conf.agent_update_per_step):
+                    batch_data = memory.sample(conf.batch_size)
+                    q1_loss, q2_loss, policy_loss, alpha_loss, alpha = agent.update_parameters(batch_data, agent_update_count)
+                    q1_losses.append(q1_loss)
+                    q2_losses.append(q2_loss)
+                    policy_losses.append(policy_loss)
+                    alpha_losses.append(alpha_loss)
+                    alphas.append(alpha)
+                    agent_update_count += 1
 
+            if done:
+                break
+
+        # Display performance
+        reward_moving_avg = np.sum(rewards) if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * np.sum(rewards)
+        pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f}  Curiosity Reward {:.2f} (moving average {:.2f})".format(epoch, len(memory), np.sum(rewards), np.sum(curiosity_rewards), reward_moving_avg))
+
+        # Save episodic metrics
         metrics['epoch'].append(epoch)
-        metrics['reward'].append(np.sum(rewards_org))
-        metrics['curiosity_reward'].append(np.sum(rewards))
+        metrics['reward'].append(np.sum(rewards))
+        metrics['curiosity_reward'].append(np.sum(curiosity_rewards))
         lineplot(metrics['epoch'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
         lineplot(metrics['epoch'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
-        
-        # Insert samples into the memory
-        for (s, a, _, s_next, t), r in zip(trajectory_samples, rewards):
-            memory.append(s, a, r, s_next, t)
+        # Agent update related metrics
+        if len(memory) > conf.random_sample_num:
+            metrics['q1_loss'].append(np.mean(q1_losses))
+            metrics['policy_loss'].append(np.mean(policy_losses))
+            metrics['alpha_loss'].append(np.mean(alpha_losses))
+            metrics['alpha'].append(np.mean(alphas))
+            lineplot(metrics['epoch'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
+            lineplot(metrics['epoch'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
+            lineplot(metrics['epoch'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
+            lineplot(metrics['epoch'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
 
-        if memory.step < conf.random_sample_num:
-            continue
 
-        if not agent._is_updated:
-            print("--- START PARAMETER UPDATE ---")
-
-        # Update parameters
-        for _ in range(len(trajectory_samples)):
-            batch_data = memory.sample(conf.batch_size)
-            q1_loss, q2_loss, policy_loss, alpha_loss, alphas = agent.update_parameters(batch_data, epoch)
-
-        metrics['q1_loss'].append(q1_loss)
-        metrics['policy_loss'].append(policy_loss)
-        metrics['alpha_loss'].append(alpha_loss)
-        metrics['alpha'].append(alphas)
-        lineplot(metrics['epoch'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
-        lineplot(metrics['epoch'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
-        lineplot(metrics['epoch'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
-        lineplot(metrics['epoch'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
-
+        # Update VIME
         if use_vime:
+            vime.memorize_episodic_info_gains(info_gains)            
             elbo = vime.update_posterior(memory)
             metrics['ELBO'].append(elbo)
             metrics['D_KL_median'].append(np.median(info_gains))
@@ -155,23 +165,25 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             lineplot(metrics['epoch'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
             multiple_lineplot(metrics['epoch'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
 
+        
 
         # Test current policy
         if epoch % conf.test_interval == 0:
             rewards = []
             for _ in range(conf.test_times):
-                total_reward = 0
                 o = env.reset()
-                for _ in range(conf.episode_max_length):
+                done = False
+                episode_reward = 0
+                while not done:
                     a = agent.select_action(o, eval=True)
                     o_next, r, done, _ = env.step(a)
-                    total_reward += r
+                    episode_reward += r
                     o = o_next
-                    if done:
-                        break
-                rewards.append(total_reward)
+
+                rewards.append(episode_reward)
+
             mean, std = np.mean(rewards), np.std(rewards)
-            print("TEST POLICY AVG REWARD: {:.2f} (\pm {:.2f})".format(mean, std))
+            print("TEST POLICY AVG REWARD: {:.2f} (+- {:.2f})".format(mean, std))
 
             metrics['test_epoch'].append(epoch)
             metrics['test_reward'].append(rewards)
@@ -203,35 +215,21 @@ def evaluate(config_file_path: str, model_filepath: str, max_episode_length: int
     ckpt = torch.load(model_filepath, map_location='cpu')
     agent.load_state_dict(ckpt['agent'])
 
-    _, total_reward = collect_samples(env, agent, max_episode_length, evaluate=True, render=render)
-    print("REWARD {}".format(total_reward))
-    input("OK? >")
-
-
-
-
-def collect_samples(env, agent, episode_max_length, evaluate=False, render=False):
-    """Run for one episode using a given agent.
-    Return
-    ---
-    trajectory: list of (s_t, a_t, r_t, s_{t+1}, terminate)
-    total_reward: (float) Cumulated reward of an episode.
-    """
-    trajectory = []
-    total_reward = 0
-
     o = env.reset()
     if render:
         env.render()
-    for _ in range(episode_max_length):
-        a = agent.select_action(o, eval=evaluate)
+    done = False
+    episode_reward = 0
+    while not done:
+        a = agent.select_action(o, eval=True)
         o_next, r, done, _ = env.step(a)
-        total_reward += r
-        trajectory.append((o, a, r, o_next, done))
+        episode_reward += r
         o = o_next
-        if done:
-            break
-    return trajectory, total_reward
+
+    print("REWARD {}".format(episode_reward))
+    input("OK? >")
+
+
 
 
     
