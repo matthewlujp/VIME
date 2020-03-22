@@ -100,6 +100,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         else:
             pbar.set_description("EPOCH {} ({} samples)".format(epoch, len(memory)))
 
+
         # Collect samples
         trajectory_samples, total_reward = collect_samples(env, agent, conf.episode_max_length)  # list of (s, a, r, s', t)
         reward_prev = total_reward
@@ -226,6 +227,7 @@ def collect_samples(env, agent, episode_max_length, evaluate=False, render=False
         o_next, r, done, _ = env.step(a)
         total_reward += r
         trajectory.append((o, a, r, o_next, done))
+        o = o_next
         if done:
             break
     return trajectory, total_reward
