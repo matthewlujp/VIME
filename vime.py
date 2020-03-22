@@ -68,7 +68,7 @@ class VIME(nn.Module):
 
         # \frac{\lambda^2}{2} (\nabla_\phi l)^{\rm T} H^{-1} (\nabla_\phi^{\rm T} l)
         with torch.no_grad():
-            return self._lamb / 2 * (nabla.pow(2) * H.pow(-1)).sum()
+            return (self._lamb / 2 * (nabla.pow(2) * H.pow(-1)).sum()).item()
 
     def _calc_hessian(self):
         """Return diagonal elements of H = [ \frac{\partial^2 l_{D_{KL}}}{{\partial \phi_j}^2} ]_j

@@ -135,7 +135,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
         # Display performance
         reward_moving_avg = np.sum(rewards) if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * np.sum(rewards)
-        pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f}  Curiosity Reward {:.2f} (moving average {:.2f})".format(epoch, len(memory), np.sum(rewards), np.sum(curiosity_rewards), reward_moving_avg))
+        pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f}  Curiosity Reward {:.2E} (moving average {:.2f})".format(epoch, len(memory), np.sum(rewards), np.sum(curiosity_rewards), reward_moving_avg))
 
         # Save episodic metrics
         metrics['epoch'].append(epoch)
