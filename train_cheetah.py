@@ -93,11 +93,11 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     for epoch in pbar:
         if reward_prev: 
             if use_vime:
-                pbar.set_description("EPOCH {} --- Reward {:.2f}  Curiosity Reward {:.2f} (moving average {:.2f})".format(epoch, reward_prev, curiosity_reward_prev, reward_moving_avg))
+                pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f}  Curiosity Reward {:.2f} (moving average {:.2f})".format(epoch, len(memory), reward_prev, curiosity_reward_prev, reward_moving_avg))
             else:
-                pbar.set_description("EPOCH {} --- Reward {:.2f} (moving average {:.2f})".format(epoch, reward_prev, reward_moving_avg))
+                pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f} (moving average {:.2f})".format(epoch, len(memory), reward_prev, reward_moving_avg))
         else:
-            pbar.set_description("EPOCH {}".format(epoch))
+            pbar.set_description("EPOCH {} ({} samples)".format(epoch, len(memory)))
 
         # Collect samples
         trajectory_samples, total_reward = collect_samples(env, agent, conf.episode_max_length)  # list of (s, a, r, s', t)
@@ -127,7 +127,8 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
         if memory.step < conf.random_sample_num:
             continue
-        elif memory.step == conf.random_sample_num:
+
+        if not agent._is_updated:
             print("--- START PARAMETER UPDATE ---")
 
         # Update parameters
