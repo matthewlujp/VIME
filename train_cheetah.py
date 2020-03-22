@@ -58,6 +58,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         'D_KL_median': [], 'D_KL_mean': [],
         'q1_loss': [], 'policy_loss': [], 'alpha_loss': [], 'alpha': [],
         'ELBO': [],
+        'test_epoch': [], 'test_reward': [],
     }
 
     # Set up environment
@@ -150,6 +151,28 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             metrics['D_KL_mean'].append(np.mean(info_gains))
             lineplot(metrics['epoch'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
             multiple_lineplot(metrics['epoch'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
+
+
+        # Test current policy
+        if epoch % conf.test_interval == 0:
+            rewards = []
+            for _ in range(conf.test_times):
+                total_reward = 0
+                o = env.reset()
+                for _ in range(conf.episode_max_length):
+                    a = agent.select_action(o, eval=True)
+                    next_o, r, done, _ = env.step(a)
+                    total_reward += r
+                    if done:
+                        break
+                rewards.append(total_reward)
+            mean, std = np.mean(rewards), np.std(rewards)
+            print("TEST POLICY AVG REWARD: {} (\pm {})".format(mean, std))
+
+            metrics['test_epoch'].append(epoch)
+            metrics['test_reward'].append(rewards)
+            lineplot(metrics['test_epoch'][-len(metrics['test_reward']):], metrics['test_reward'], 'test_reward', log_dir)
+            
 
         # Save checkpoint
         if epoch % conf.checkpoint_interval == 0:
