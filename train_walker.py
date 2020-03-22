@@ -129,8 +129,13 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             continue
 
         # Update parameters
-        batch_data = memory.sample(conf.batch_size)
-        q1_loss, q2_loss, policy_loss, alpha_loss, alphas = agent.update_parameters(batch_data, epoch)
+        for _ in range(len(trajectory_samples)):
+            batch_data = memory.sample(conf.batch_size)
+            q1_loss, q2_loss, policy_loss, alpha_loss, alphas = agent.update_parameters(batch_data, epoch)
+
+            if use_vime:
+                elbo = vime.update_posterior(memory)
+
         metrics['q1_loss'].append(q1_loss)
         metrics['policy_loss'].append(policy_loss)
         metrics['alpha_loss'].append(alpha_loss)
@@ -141,7 +146,6 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         lineplot(metrics['epoch'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
 
         if use_vime:
-            elbo = vime.update_posterior(memory)
             metrics['ELBO'].append(elbo)
             metrics['D_KL_median'].append(np.median(info_gains))
             metrics['D_KL_mean'].append(np.mean(info_gains))

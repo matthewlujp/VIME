@@ -127,6 +127,8 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
         if memory.step < conf.random_sample_num:
             continue
+        elif memory.step == conf.random_sample_num:
+            print("--- START PARAMETER UPDATE ---")
 
         # Update parameters
         batch_data = memory.sample(conf.batch_size)
