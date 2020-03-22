@@ -164,8 +164,9 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 o = env.reset()
                 for _ in range(conf.episode_max_length):
                     a = agent.select_action(o, eval=True)
-                    next_o, r, done, _ = env.step(a)
+                    o_next, r, done, _ = env.step(a)
                     total_reward += r
+                    o = o_next
                     if done:
                         break
                 rewards.append(total_reward)
