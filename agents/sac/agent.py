@@ -22,7 +22,7 @@ class SAC(Agent):
     ]
 
     def __init__(
-            self, observation_space, action_space, device, gamma=0.99, tau=0.005, alpha=0.2, hidden_size=10,
+            self, observation_space, action_space, device, gamma=0.99, tau=0.005, alpha=0.2, hidden_size=256,
             target_update_interval=1, automatic_entropy_tuning=True, learning_rate=3.0e-4):
         self.gamma = gamma
         self.tau = tau

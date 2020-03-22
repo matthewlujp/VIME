@@ -169,7 +169,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                         break
                 rewards.append(total_reward)
             mean, std = np.mean(rewards), np.std(rewards)
-            print("TEST POLICY AVG REWARD: {} (\pm {})".format(mean, std))
+            print("TEST POLICY AVG REWARD: {:.2f} (\pm {:.2f})".format(mean, std))
 
             metrics['test_epoch'].append(epoch)
             metrics['test_reward'].append(rewards)
