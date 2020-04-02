@@ -52,13 +52,13 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
     # Set up log metrics
     metrics = {
-        'epoch': [],
+        'episode': [],
         'reward': [], # cummulated reward
         'curiosity_reward': [], # cummulated reward with information gain
         'D_KL_median': [], 'D_KL_mean': [],
         'q1_loss': [], 'policy_loss': [], 'alpha_loss': [], 'alpha': [],
         'ELBO': [],
-        'test_epoch': [], 'test_reward': [],
+        'test_episode': [], 'test_reward': [],
     }
 
     # Set up environment
@@ -85,17 +85,18 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         torch.save(ckpt, path)
 
     # Train agent
-    init_epoch = 0 if len(metrics['epoch']) == 0 else metrics['epoch'][-1] + 1
-    pbar = tqdm.tqdm(range(init_epoch, conf.epochs))
+    init_episode = 0 if len(metrics['episode']) == 0 else metrics['episode'][-1] + 1
+    pbar = tqdm.tqdm(range(init_episode, conf.episodes))
     reward_moving_avg = None
     moving_avg_coef = 0.1
     agent_update_count = 0
 
-    for epoch in pbar:
+    for episode in pbar:
         o = env.reset()
         rewards, curiosity_rewards = [], []
         info_gains = []
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
+
         for t in range(env._max_episode_steps):
             if len(memory) < conf.random_sample_num:
                 a = env.action_space.sample()
@@ -103,8 +104,8 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 a = agent.select_action(o, eval=False)
 
             o_next, r, done, _ = env.step(a)
-
             rewards.append(r)
+
             # Calculate curiosity reward in VIME
             if use_vime:
                 info_gain = vime.calc_info_gain(o, a, o_next)
@@ -116,7 +117,6 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
             memory.append(o, a, r, o_next, done)
             o = o_next
-
 
             # Update agent
             if len(memory) >= conf.random_sample_num:
@@ -134,25 +134,27 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 break
 
         # Display performance
-        reward_moving_avg = np.sum(rewards) if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * np.sum(rewards)
-        pbar.set_description("EPOCH {} ({} samples) --- Reward {:.2f}  Curiosity Reward {:.2E} (moving average {:.2f})".format(epoch, len(memory), np.sum(rewards), np.sum(curiosity_rewards), reward_moving_avg))
+        episodic_reward = np.sum(rewards)
+        reward_moving_avg = episodic_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * episodic_reward
+        pbar.set_description("EPISODE: {}, TOTAL STEPS: {} ({} samples) --- Episode steps: {}, Curiosity Reward {:.2E}, Reward {:.2f} (moving average {:.2f})".format(
+            episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg))
 
         # Save episodic metrics
-        metrics['epoch'].append(epoch)
-        metrics['reward'].append(np.sum(rewards))
+        metrics['episode'].append(episode)
+        metrics['reward'].append(episodic_reward)
         metrics['curiosity_reward'].append(np.sum(curiosity_rewards))
-        lineplot(metrics['epoch'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
-        lineplot(metrics['epoch'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
+        lineplot(metrics['episode'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
+        lineplot(metrics['episode'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
         # Agent update related metrics
         if len(memory) > conf.random_sample_num:
             metrics['q1_loss'].append(np.mean(q1_losses))
             metrics['policy_loss'].append(np.mean(policy_losses))
             metrics['alpha_loss'].append(np.mean(alpha_losses))
             metrics['alpha'].append(np.mean(alphas))
-            lineplot(metrics['epoch'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
-            lineplot(metrics['epoch'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
-            lineplot(metrics['epoch'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
-            lineplot(metrics['epoch'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
+            lineplot(metrics['episode'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
+            lineplot(metrics['episode'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
+            lineplot(metrics['episode'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
+            lineplot(metrics['episode'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
 
 
         # Update VIME
@@ -162,13 +164,13 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             metrics['ELBO'].append(elbo)
             metrics['D_KL_median'].append(np.median(info_gains))
             metrics['D_KL_mean'].append(np.mean(info_gains))
-            lineplot(metrics['epoch'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
-            multiple_lineplot(metrics['epoch'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
+            lineplot(metrics['episode'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
+            multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
 
         
 
         # Test current policy
-        if epoch % conf.test_interval == 0:
+        if episode % conf.test_interval == 0:
             rewards = []
             for _ in range(conf.test_times):
                 o = env.reset()
@@ -183,15 +185,15 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 rewards.append(episode_reward)
 
             mean, std = np.mean(rewards), np.std(rewards)
-            print("TEST POLICY AVG REWARD: {:.2f} (+- {:.2f})".format(mean, std))
+            print("TEST AT EPISODE {} ({} episodes): {:.2f} (+- {:.2f})".format(episode, conf.test_times, mean, std))
 
-            metrics['test_epoch'].append(epoch)
+            metrics['test_episode'].append(episode)
             metrics['test_reward'].append(rewards)
-            lineplot(metrics['test_epoch'][-len(metrics['test_reward']):], metrics['test_reward'], 'test_reward', log_dir)
+            lineplot(metrics['test_episode'][-len(metrics['test_reward']):], metrics['test_reward'], 'test_reward', log_dir)
             
 
         # Save checkpoint
-        if epoch % conf.checkpoint_interval == 0:
+        if episode % conf.checkpoint_interval == 0:
             save_checkpoint()
 
     save_checkpoint()

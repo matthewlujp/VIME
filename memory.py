@@ -50,8 +50,8 @@ class ReplayBuffer:
         """Return a tuple of batch data.
         batch_s, batch_a, batch_r, batch_s', batch_t
         """
-        batch_size = min(batch_size, len(self))
-        indexes = np.random.choice(range(len(self)), batch_size)
+        assert batch_size <= len(self), "specified bath size {} is larger than replay buffer size {}".format(batch_size, len(self))
+        indexes = np.random.choice(len(self), batch_size)
         observations = self._observations[indexes]
         actions = self._actions[indexes]
         rewards = self._rewards[indexes]
