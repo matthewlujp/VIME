@@ -136,7 +136,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         # Display performance
         episodic_reward = np.sum(rewards)
         reward_moving_avg = episodic_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * episodic_reward
-        pbar.set_description("EPISODE: {}, TOTAL STEPS: {} ({} samples) --- Episode steps: {}, Curiosity Reward {:.2E}, Reward {:.2f} (moving average {:.2f})".format(
+        pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {}  Episodic steps: {}, Curiosity Reward {:.2E}, Reward {:.2f} (moving average {:.2f})".format(
             episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg))
 
         # Save episodic metrics
@@ -185,7 +185,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 rewards.append(episode_reward)
 
             mean, std = np.mean(rewards), np.std(rewards)
-            print("TEST AT EPISODE {} ({} episodes): {:.2f} (+- {:.2f})".format(episode, conf.test_times, mean, std))
+            print("\nTEST AT EPISODE {} ({} episodes) --- Avg. Reward {:.2f} (+- {:.2f})".format(episode, conf.test_times, mean, std))
 
             metrics['test_episode'].append(episode)
             metrics['test_reward'].append(rewards)
