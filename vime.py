@@ -19,7 +19,7 @@ class VIME(nn.Module):
         '_optim',
     ]
 
-    def __init__(self, observation_size, action_size, eta=0.1, lamb=0.01, batch_size=10, update_iterations=500, learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, nabla_limit=100):
+    def __init__(self, observation_size, action_size, device, eta=0.1, lamb=0.01, batch_size=10, update_iterations=500, learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, nabla_limit=100):
         super().__init__()
 
         self._update_iterations = update_iterations
@@ -27,6 +27,7 @@ class VIME(nn.Module):
         self._eta = eta
         self._lamb = lamb
         self._nabla_limit = nabla_limit
+        self._device = device
 
         self._D_KL_smooth_length = D_KL_smooth_length
         self._prev_D_KL_medians = deque(maxlen=D_KL_smooth_length)
