@@ -104,7 +104,9 @@ class VIME(nn.Module):
             batch_s, batch_a, batch_s_next = torch.tensor(batch_s, dtype=torch.float32), torch.tensor(batch_a, dtype=torch.float32), torch.tensor(batch_s_next, dtype=torch.float32)
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
             log_likelihood = self._dynamics_model.calc_log_likelihood(batch_s_next, batch_s, batch_a)
+            assert not torch.isnan(log_likelihood).any() and not torch.isinf(log_likelihood).any(), log_likelihood.item()
             div_kl = self._calc_div_kl(prev_mu, prev_var)
+            assert not torch.isnan(div_kl).any() and not torch.isinf(div_kl).any(), div_kl.item()
 
             elbo = log_likelihood - div_kl
             assert not torch.isnan(elbo).any() and not torch.isinf(elbo).any(), elbo.item()
