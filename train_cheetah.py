@@ -107,8 +107,9 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             rewards.append(r)
 
             # Calculate curiosity reward in VIME
-            if use_vime:
+            if use_vime and len(memory) >= conf.random_sample_num:
                 info_gain = vime.calc_info_gain(o, a, o_next)
+                assert not np.isnan(info_gain) and not np.isinf(info_gain), "invalid information gain, {}".format(info_gain)
                 info_gains.append(info_gain)
                 r = vime.calc_curiosity_reward(r, info_gain)
             curiosity_rewards.append(r)
@@ -162,7 +163,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
 
         # Update VIME
-        if use_vime:
+        if use_vime and len(memory) >= conf.random_sample_num:
             vime.memorize_episodic_info_gains(info_gains)            
             elbo = vime.update_posterior(memory)
             metrics['ELBO'].append(elbo)
