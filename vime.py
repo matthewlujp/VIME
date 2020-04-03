@@ -251,7 +251,7 @@ class BNN:
         # = log N(s_next | s_next_mean, exp(s_next_logvar))
         # = -\frac{1}{2} \sum^d_j [ logvar_j + (s_next_j - s_next_mean)^2 exp(- logvar_j) ]  - \frac{d}{2} \log (2\pi)
         ll = - .5 * ( s_next_logvar + (batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp() ).sum(dim=1) - .5 * self._observation_size * np.log(2 * np.pi)
-        assert torch.isinf((- s_next_logvar).exp()).any(), "s_next_logvar {}, exp(-s_next_logvar) {}".format(s_next_logvar, (- s_next_logvar).exp())
+        assert not torch.isinf((- s_next_logvar).exp()).any(), "s_next_logvar\n{}\nexp(-s_next_logvar)\n{}".format(s_next_logvar, (- s_next_logvar).exp())
         # print("p(s_{t+1} | s_t, a_t, theta) =", ll.exp().mean().item(), "\tloglikelihood =", ll.mean().item())
         assert ll.size(0) == batch_s_next.size(0)
         return ll.mean()
