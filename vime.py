@@ -106,13 +106,15 @@ class VIME(nn.Module):
             div_kl = self._calc_div_kl(prev_mu, prev_var)
 
             elbo = log_likelihood - div_kl
+            assert not torch.isnan(elbo).any() and not torch.isinf(elbo).any(), elbo.item()
+
             self._optim.zero_grad()
             (-elbo).backward()
             self._optim.step()
 
             # Check parameters
-            assert not torch.isnan(self._params_mu).any(), self._params_mu
-            assert not torch.isnan(self._params_rho).any(), self._params_rho
+            assert not torch.isnan(self._params_mu).any() and not torch.isinf(self._params_mu).any(), self._params_mu
+            assert not torch.isnan(self._params_rho).any() and not torch.isinf(self._params_rho).any(), self._params_rho
 
             # update self._params
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
