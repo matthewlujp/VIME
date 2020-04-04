@@ -98,8 +98,6 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         info_gains = []
         log_likelihoods = []
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
-        if use_vime:
-            H = vime.calc_hessian()
 
         for t in range(env._max_episode_steps):
             if len(memory) < conf.random_sample_num:
@@ -113,7 +111,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
             if use_vime and len(memory) >= conf.random_sample_num:
                 # Calculate curiosity reward in VIME
-                info_gain, log_likelihood = vime.calc_info_gain(o, a, o_next, H)
+                info_gain, log_likelihood = vime.calc_info_gain(o, a, o_next)
                 assert not np.isnan(info_gain).any() and not np.isinf(info_gain).any(), "invalid information gain, {}".format(info_gains)
                 info_gains.append(info_gain)
                 log_likelihoods.append(log_likelihood)

@@ -17,6 +17,7 @@ class VIME(nn.Module):
         '_eta', '_lamb',
         '_dynamics_model',
         '_params_mu', '_params_rho',
+        '_H',
         '_optim',
     ]
 
@@ -36,6 +37,7 @@ class VIME(nn.Module):
         self._dynamics_model = BNN(observation_size, action_size, hidden_size, max_logvar, min_logvar)
         self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number).to(device))
         self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number).to(device))
+        self._H = self._calc_hessian()
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
         self._optim = Adam([self._params_mu, self._params_rho], lr=learning_rate) 
 
@@ -54,7 +56,7 @@ class VIME(nn.Module):
         """
         self._prev_D_KL_medians.append(np.median(info_gains))
 
-    def calc_info_gain(self, s, a, s_next, H):
+    def calc_info_gain(self, s, a, s_next):
         """Calculate information gain D_KL[ q( /cdot | \phi') || q( /cdot | \phi_n) ].
 
         Return info_gain, log-likelihood of each sample \log p(s_{t+1}, a_t, s_)
@@ -72,11 +74,10 @@ class VIME(nn.Module):
 
         # \frac{\lambda^2}{2} (\nabla_\phi l)^{\rm T} H^{-1} (\nabla_\phi^{\rm T} l)
         with torch.no_grad():
-            info_gain = .5 * self._lamb ** 2 * torch.sum(nabla.pow(2) * H.pow(-1))
-            # assert not torch.isinf(info_gain).any(), info_gain
+            info_gain = .5 * self._lamb ** 2 * torch.sum(nabla.pow(2) * self._H.pow(-1))
         return info_gain.cpu().item(), ll.mean().detach().cpu().item()
 
-    def calc_hessian(self):
+    def _calc_hessian(self):
         """Return diagonal elements of H = [ \frac{\partial^2 l_{D_{KL}}}{{\partial \phi_j}^2} ]_j
 
         \frac{\partial^2 l_{D_{KL}}}{{\partial \mu_j}^2} = - \frac{1}{\log^2 (1 + e^{\phi_j})}
@@ -120,6 +121,9 @@ class VIME(nn.Module):
             self._optim.zero_grad()
             (-elbo).backward()
             self._optim.step()
+
+            # Update hessian
+            self._H = self._calc_hessian()
 
             # Check parameters
             assert not torch.isnan(self._params_mu).any() and not torch.isinf(self._params_mu).any(), self._params_mu
