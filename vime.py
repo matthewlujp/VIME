@@ -54,40 +54,29 @@ class VIME(nn.Module):
         """
         self._prev_D_KL_medians.append(np.median(info_gains))
 
-    def calc_info_gain(self, s, a, s_next):
+    def calc_info_gain(self, s, a, s_next, H):
         """Calculate information gain D_KL[ q( /cdot | \phi') || q( /cdot | \phi_n) ].
 
         Return info_gain, log-likelihood of each sample \log p(s_{t+1}, a_t, s_)
         """
-        sample_num = len(s)
         self._dynamics_model.set_params(self._params_mu, self._params_rho) # necessary to calculate new gradient
         ll = self._dynamics_model.calc_log_likelihood(
-            torch.tensor(s_next, dtype=torch.float32).to(self._device),
-            torch.tensor(s, dtype=torch.float32).to(self._device),
-            torch.tensor(a, dtype=torch.float32).to(self._device))
-        # assert ll.size() == torch.Size([sample_num]), ll
-        l = -ll
+            torch.tensor(s_next, dtype=torch.float32).to(self._device).unsqueeze(0),
+            torch.tensor(s, dtype=torch.float32).to(self._device).unsqueeze(0),
+            torch.tensor(a, dtype=torch.float32).to(self._device).unsqueeze(0))
+        l = - ll.mean()
 
-        # Calculate nablas for each sample
-        nablas = []
-        for i in range(sample_num):
-            self._optim.zero_grad()
-            l[i].backward(retain_graph=True)  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
-            nabla = torch.cat([self._params_mu.grad.data, self._params_rho.grad.data])
-            nablas.append(nabla)
-        nablas = torch.stack(nablas)
-        # assert nablas.size() == torch.Size([sample_num, len(self._params_mu) + len(self._params_rho)]), nablas.size()
+        self._optim.zero_grad()
+        l.backward()  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
+        nabla = torch.cat([self._params_mu.grad.data, self._params_rho.grad.data])
 
-        H = self._calc_hessian().repeat([sample_num, 1])  # [sample_num x parameter_num]
-        # assert H.size() == torch.Size([sample_num, len(self._params_mu) + len(self._params_rho)]), H.size()
-        
         # \frac{\lambda^2}{2} (\nabla_\phi l)^{\rm T} H^{-1} (\nabla_\phi^{\rm T} l)
         with torch.no_grad():
-            info_gain = .5 * self._lamb ** 2 * torch.sum(nablas.pow(2) * H.pow(-1), dim=1)
+            info_gain = .5 * self._lamb ** 2 * torch.sum(nabla.pow(2) * H.pow(-1))
             # assert not torch.isinf(info_gain).any(), info_gain
-        return info_gain.cpu().numpy(), ll.detach().cpu().numpy()
+        return info_gain.cpu().item(), ll.mean().detach().cpu().item()
 
-    def _calc_hessian(self):
+    def calc_hessian(self):
         """Return diagonal elements of H = [ \frac{\partial^2 l_{D_{KL}}}{{\partial \phi_j}^2} ]_j
 
         \frac{\partial^2 l_{D_{KL}}}{{\partial \mu_j}^2} = - \frac{1}{\log^2 (1 + e^{\phi_j})}
@@ -99,8 +88,14 @@ class VIME(nn.Module):
             H_mu = log_denomi.pow(-2)
             H_rho = 2 * torch.exp(2 * self._params_rho) / (denomi * log_denomi).pow(2)
             H = torch.cat([H_mu, H_rho])
-        assert not torch.isnan(H).any() and not torch.isinf(H).any(), H
         return H
+
+    def _calc_div_kl(self, prev_mu, prev_var):
+        """Calculate D_{KL} [ q(\cdot | \phi) || q(\cdot | \phi_n) ]
+        = \frac{1}{2} \sum^d_i [ \log(var_{ni}) - \log(var_i) + \frac{var_i}{var_{ni}} + \frac{(\mu_i - \mu_{ni})^2}{var_{ni}} ] - \frac{d}{2}
+        """
+        var = (1 + self._params_rho.exp()).log().pow(2)
+        return .5 * ( prev_var.log() - var.log() + var / prev_var + (self._params_mu - prev_mu).pow(2) / prev_var ).sum() - .5 * len(self._params_mu)
 
     def update_posterior(self, memory):
         """
@@ -134,13 +129,6 @@ class VIME(nn.Module):
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
 
         return elbo.item()
-
-    def _calc_div_kl(self, prev_mu, prev_var):
-        """Calculate D_{KL} [ q(\cdot | \phi) || q(\cdot | \phi_n) ]
-        = \frac{1}{2} \sum^d_i [ \log(var_{ni}) - \log(var_i) + \frac{var_i}{var_{ni}} + \frac{(\mu_i - \mu_{ni})^2}{var_{ni}} ] - \frac{d}{2}
-        """
-        var = (1 + self._params_rho.exp()).log().pow(2)
-        return .5 * ( prev_var.log() - var.log() + var / prev_var + (self._params_mu - prev_mu).pow(2) / prev_var ).sum() - .5 * len(self._params_mu)
 
     def state_dict(self):
         return {

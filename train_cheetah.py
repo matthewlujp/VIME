@@ -94,10 +94,11 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
     for episode in pbar:
         o = env.reset()
-        rewards = []
-        info_gains = None
-        sample_buffer = []
+        rewards, curiosity_rewards = [], []
+        info_gains = []
+        log_likelihoods = []
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
+        H = vime.calc_hessian()
 
         for t in range(env._max_episode_steps):
             if len(memory) < conf.random_sample_num:
@@ -108,7 +109,18 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             o_next, r, done, _ = env.step(a)
             done = False if t == env._max_episode_steps - 1 else bool(done)  # done should be False if an episode is terminated forcefully
             rewards.append(r)
-            sample_buffer.append((o, a, r, o_next, done))
+
+            if use_vime and len(memory) >= conf.random_sample_num:
+                # Calculate curiosity reward in VIME
+                info_gain, log_likelihood = vime.calc_info_gain(o, a, o_next, H)
+                assert not np.isnan(info_gain).any() and not np.isinf(info_gain).any(), "invalid information gain, {}".format(info_gains)
+                info_gains.append(info_gain)
+                log_likelihoods.append(log_likelihood)
+                vime.memorize_episodic_info_gains(info_gain)            
+                r = vime.calc_curiosity_reward(r, info_gain)
+            curiosity_rewards.append(r)
+
+            memory.append(o, a, r, o_next, done)
             o = o_next
 
             # Update agent
@@ -126,25 +138,14 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             if done:
                 break
 
-        # Calculate curiosity reward
-        if use_vime and len(memory) >= conf.random_sample_num:
-            # Calculate curiosity reward in VIME
-            o_batch, a_batch, _, o_next_batch, _ = zip(*sample_buffer)
-            info_gains, log_likelihoods = vime.calc_info_gain(o_batch, a_batch, o_next_batch)
-            assert not np.isnan(info_gains).any() and not np.isinf(info_gains).any(), "invalid information gain, {}".format(info_gains)
-            curiosity_rewards = vime.calc_curiosity_reward(np.array(rewards), info_gains)
-        else:
-            log_likelihoods = np.ones_like(rewards) * -np.inf
-            curiosity_rewards = rewards
-        # Push collected samples into replay buffer
-        for (o, a, _, o_next, done), cr in zip(sample_buffer, curiosity_rewards):
-            memory.append(o, a, cr, o_next, done)
+        if len(log_likelihoods) == 0:
+            log_likelihoods.append(-np.inf)
 
         # Display performance
         episodic_reward = np.sum(rewards)
         reward_moving_avg = episodic_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * episodic_reward
         if use_vime:
-            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.2E}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.1f}".format(
+            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.1f}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.1f}".format(
                 episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg, np.mean(np.exp(log_likelihoods))))
         else:
             pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Rwd {:.1f} (mov avg {:.1f})".format(
@@ -175,12 +176,10 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             for _ in range(conf.vime_update_per_episode):
                 elbo = vime.update_posterior(memory)
             metrics['ELBO'].append(elbo)
+            metrics['D_KL_median'].append(np.median(info_gains))
+            metrics['D_KL_mean'].append(np.mean(info_gains))
             lineplot(metrics['episode'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
-            if info_gains is not None:
-                vime.memorize_episodic_info_gains(info_gains)            
-                metrics['D_KL_median'].append(np.median(info_gains))
-                metrics['D_KL_mean'].append(np.mean(info_gains))
-                multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
+            multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
 
         
 
