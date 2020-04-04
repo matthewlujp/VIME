@@ -10,6 +10,7 @@ from torch.distributions.normal import Normal
 from torch.optim import Adam
 
 
+
 class VIME(nn.Module):
     _ATTRIBUTES_TO_SAVE = [
         '_D_KL_smooth_length', '_prev_D_KL_medians',
@@ -19,7 +20,8 @@ class VIME(nn.Module):
         '_optim',
     ]
 
-    def __init__(self, observation_size, action_size, device, eta=0.1, lamb=0.01, batch_size=10, update_iterations=500, learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, nabla_limit=100):
+    def __init__(self, observation_size, action_size, eta=0.1, lamb=0.01, batch_size=10, update_iterations=500,
+            learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, nabla_limit=100, max_logvar=2., min_logvar=-10.):
         super().__init__()
 
         self._update_iterations = update_iterations
@@ -27,12 +29,11 @@ class VIME(nn.Module):
         self._eta = eta
         self._lamb = lamb
         self._nabla_limit = nabla_limit
-        self._device = device
 
         self._D_KL_smooth_length = D_KL_smooth_length
         self._prev_D_KL_medians = deque(maxlen=D_KL_smooth_length)
 
-        self._dynamics_model = BNN(observation_size, action_size, hidden_size)
+        self._dynamics_model = BNN(observation_size, action_size, hidden_size, max_logvar, min_logvar)
         self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number))
         self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number))
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
@@ -103,6 +104,7 @@ class VIME(nn.Module):
             batch_s, batch_a, _, batch_s_next, _ = memory.sample(self._batch_size)
             batch_s, batch_a, batch_s_next = torch.tensor(batch_s, dtype=torch.float32), torch.tensor(batch_a, dtype=torch.float32), torch.tensor(batch_s_next, dtype=torch.float32)
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
+
             log_likelihood = self._dynamics_model.calc_log_likelihood(batch_s_next, batch_s, batch_a)
             assert not torch.isnan(log_likelihood).any() and not torch.isinf(log_likelihood).any(), log_likelihood.item()
             div_kl = self._calc_div_kl(prev_mu, prev_var)
@@ -147,9 +149,11 @@ class VIME(nn.Module):
         
 
 class BNN:
-    def __init__(self, observation_size, action_size, hidden_size):
+    def __init__(self, observation_size, action_size, hidden_size, max_logvar, min_logvar):
         self._input_size = observation_size + action_size
         self._observation_size = observation_size
+        self._max_logvar = max_logvar
+        self._min_logvar = min_logvar
 
         self._W1_mu = torch.zeros(observation_size + action_size, hidden_size)
         self._b1_mu = torch.zeros(hidden_size)
@@ -211,6 +215,7 @@ class BNN:
         X = self._linear(self._W2_mu, self._b2_mu, self._W2_var, self._b2_var, X)
         assert not torch.isnan(X).any() and not torch.isinf(X).any(), X
         mean, logvar = X[:, :self._observation_size], X[:, self._observation_size:]
+        logvar = torch.clamp(logvar, min=self._max_logvar, max=self._max_logvar)
         return mean, logvar
 
     @staticmethod
@@ -228,7 +233,7 @@ class BNN:
         assert not torch.isnan(delta).any(), delta
         assert not torch.isnan(delta.pow(.5)).any(), delta.pow(.5)
 
-        zeta = Normal(torch.zeros_like(delta), torch.ones_like(delta)).sample()
+        zeta = Normal(torch.zeros_like(delta), torch.ones_like(delta)).sample().to(gamma.device)
         r = gamma + delta.pow(0.5) * zeta
         assert not torch.isnan(r).any() and not torch.isinf(r).any(), r
         return r

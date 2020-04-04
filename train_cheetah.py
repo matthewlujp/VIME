@@ -67,7 +67,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     # Training set up
     agent = SAC(env.observation_space, env.action_space, device, **conf.agent)
     memory = ReplayBuffer(conf.replay_buffer_capacity, env.observation_space.shape, env.action_space.shape)
-    vime = VIME(env.observation_space.shape[0], env.action_space.shape[0], device, **conf.vime) if use_vime else None
+    vime = VIME(env.observation_space.shape[0], env.action_space.shape[0], **conf.vime) if use_vime else None
     # Load checkpoint if specified in config
     if conf.checkpoint != '':
         ckpt = torch.load(conf.checkpoint, map_location=device)
