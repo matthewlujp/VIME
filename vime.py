@@ -21,14 +21,13 @@ class VIME(nn.Module):
     ]
 
     def __init__(self, observation_size, action_size, device='cpu', eta=0.1, lamb=0.01, batch_size=10, update_iterations=500,
-            learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, nabla_limit=100, max_logvar=2., min_logvar=-10.):
+            learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, max_logvar=2., min_logvar=-10.):
         super().__init__()
 
         self._update_iterations = update_iterations
         self._batch_size = batch_size
         self._eta = eta
         self._lamb = lamb
-        self._nabla_limit = nabla_limit
         self._device = device
 
         self._D_KL_smooth_length = D_KL_smooth_length
@@ -72,7 +71,6 @@ class VIME(nn.Module):
             self._optim.zero_grad()
             l[i].backward(retain_graph=True)  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
             nabla = torch.cat([self._params_mu.grad.data, self._params_rho.grad.data])
-            nabla = torch.clamp(nabla, min=-self._nabla_limit, max=self._nabla_limit) # limit absolute value of nabla　TODO: remove
             # assert not torch.isnan(nabla).any() and not torch.isinf(nabla).any(), "ll {}\nnabla {}".format(ll, nabla)
             # assert not torch.isinf(nabla.data.pow(2)).any(), "nabla_rho\n{}\nnabla_rho^2\n{}".format(nabla.data, nabla.data.pow(2))
             nablas.append(nabla)
