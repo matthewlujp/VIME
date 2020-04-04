@@ -20,7 +20,7 @@ class VIME(nn.Module):
         '_optim',
     ]
 
-    def __init__(self, observation_size, action_size, eta=0.1, lamb=0.01, batch_size=10, update_iterations=500,
+    def __init__(self, observation_size, action_size, device='cpu', eta=0.1, lamb=0.01, batch_size=10, update_iterations=500,
             learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, nabla_limit=100, max_logvar=2., min_logvar=-10.):
         super().__init__()
 
@@ -29,13 +29,14 @@ class VIME(nn.Module):
         self._eta = eta
         self._lamb = lamb
         self._nabla_limit = nabla_limit
+        self._device = device
 
         self._D_KL_smooth_length = D_KL_smooth_length
         self._prev_D_KL_medians = deque(maxlen=D_KL_smooth_length)
 
         self._dynamics_model = BNN(observation_size, action_size, hidden_size, max_logvar, min_logvar)
-        self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number))
-        self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number))
+        self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number)).to(device)
+        self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number)).to(device)
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
         self._optim = Adam([self._params_mu, self._params_rho], lr=learning_rate) 
 
@@ -59,9 +60,9 @@ class VIME(nn.Module):
         """
         self._dynamics_model.set_params(self._params_mu, self._params_rho) # necessary to calculate new gradient
         ll = self._dynamics_model.calc_log_likelihood(
-            torch.tensor(s_next, dtype=torch.float32).unsqueeze(0),
-            torch.tensor(s, dtype=torch.float32).unsqueeze(0),
-            torch.tensor(a, dtype=torch.float32).unsqueeze(0)
+            torch.tensor(s_next, dtype=torch.float32).to(self._device).unsqueeze(0),
+            torch.tensor(s, dtype=torch.float32).to(self._device).unsqueeze(0),
+            torch.tensor(a, dtype=torch.float32).to(self._device).unsqueeze(0)
             ).squeeze(0)
         self._optim.zero_grad()
         (-ll).backward()  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
@@ -76,7 +77,7 @@ class VIME(nn.Module):
         with torch.no_grad():
             info_gain = self._lamb ** 2 / 2 * (nabla.pow(2) * H.pow(-1)).sum()
             assert not torch.isinf(info_gain).any(), info_gain
-        return info_gain.item()
+        return info_gain.cpu().item()
 
     def _calc_hessian(self):
         """Return diagonal elements of H = [ \frac{\partial^2 l_{D_{KL}}}{{\partial \phi_j}^2} ]_j
@@ -102,7 +103,9 @@ class VIME(nn.Module):
         prev_mu, prev_var = self._params_mu.data, (1 + self._params_rho.data.exp()).log().pow(2)
         for i in range(self._update_iterations):
             batch_s, batch_a, _, batch_s_next, _ = memory.sample(self._batch_size)
-            batch_s, batch_a, batch_s_next = torch.tensor(batch_s, dtype=torch.float32), torch.tensor(batch_a, dtype=torch.float32), torch.tensor(batch_s_next, dtype=torch.float32)
+            batch_s = torch.tensor(batch_s, dtype=torch.float32).to(self._device)
+            batch_a = torch.tensor(batch_a, dtype=torch.float32).to(self._device)
+            batch_s_next = torch.tensor(batch_s_next, dtype=torch.float32).to(self._device)
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
 
             log_likelihood = self._dynamics_model.calc_log_likelihood(batch_s_next, batch_s, batch_a)
