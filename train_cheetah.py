@@ -98,7 +98,8 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         info_gains = []
         log_likelihoods = []
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
-        H = vime.calc_hessian()
+        if use_vime:
+            H = vime.calc_hessian()
 
         for t in range(env._max_episode_steps):
             if len(memory) < conf.random_sample_num:
