@@ -68,7 +68,7 @@ class VIME(nn.Module):
         (-ll).backward()  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
         nabla = torch.cat([self._params_mu.grad.data, self._params_rho.grad.data])
         nabla = torch.clamp(nabla, min=-self._nabla_limit, max=self._nabla_limit) # limit absolute value of nabla
-        assert not np.isnan(nabla).any() and not np.isinf(nabla).any(), "ll {}\nnabla {}".format(ll, nabla)
+        assert not torch.isnan(nabla).any() and not torch.isinf(nabla).any(), "ll {}\nnabla {}".format(ll, nabla)
         H = self._calc_hessian()
         assert not torch.isinf(nabla.data.pow(2)).any(), "nabla_rho\n{}\nnabla_rho^2\n{}".format(nabla.data, nabla.data.pow(2))
         assert not torch.isinf(H.pow(-1)).any(), H.pow(-1)
@@ -91,7 +91,7 @@ class VIME(nn.Module):
             H_mu = log_denomi.pow(-2)
             H_rho = 2 * torch.exp(2 * self._params_rho) / (denomi * log_denomi).pow(2)
             H = torch.cat([H_mu, H_rho])
-        assert not np.isnan(H).any() and not np.isinf(H).any(), H
+        assert not torch.isnan(H).any() and not torch.isinf(H).any(), H
         return H
 
     def update_posterior(self, memory):
