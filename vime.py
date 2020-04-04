@@ -207,8 +207,8 @@ class BNN:
     def infer(self, s, a):
         """Forward calculate with local reparameterization.
         """
-        assert not np.isnan(s).any() and not np.isinf(s).any(), s
-        assert not np.isnan(a).any() and not np.isinf(a).any(), a
+        assert not torch.isnan(s).any() and not torch.isinf(s).any(), s
+        assert not torch.isnan(a).any() and not torch.isinf(a).any(), a
 
         X = torch.cat([s, a], dim=1)
         batch_size = X.size(0)
