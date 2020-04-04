@@ -56,14 +56,17 @@ class VIME(nn.Module):
 
     def calc_info_gain(self, s, a, s_next):
         """Calculate information gain D_KL[ q( /cdot | \phi') || q( /cdot | \phi_n) ].
+
+        Return info_gain, log-likelihood of each sample \log p(s_{t+1}, a_t, s_)
         """
         sample_num = len(s)
         self._dynamics_model.set_params(self._params_mu, self._params_rho) # necessary to calculate new gradient
-        l = - self._dynamics_model.calc_log_likelihood(
+        ll = self._dynamics_model.calc_log_likelihood(
             torch.tensor(s_next, dtype=torch.float32).to(self._device),
             torch.tensor(s, dtype=torch.float32).to(self._device),
             torch.tensor(a, dtype=torch.float32).to(self._device))
-        # assert l.size() == torch.Size([sample_num]), l
+        # assert ll.size() == torch.Size([sample_num]), ll
+        l = -ll
 
         # Calculate nablas for each sample
         nablas = []
@@ -84,7 +87,7 @@ class VIME(nn.Module):
         with torch.no_grad():
             info_gain = .5 * self._lamb ** 2 * torch.sum(nablas.pow(2) * H.pow(-1), dim=1)
             # assert not torch.isinf(info_gain).any(), info_gain
-        return info_gain.cpu().numpy()
+        return info_gain.cpu().numpy(), ll.detach().numpy()
 
     def _calc_hessian(self):
         """Return diagonal elements of H = [ \frac{\partial^2 l_{D_{KL}}}{{\partial \phi_j}^2} ]_j

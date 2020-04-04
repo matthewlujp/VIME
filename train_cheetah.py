@@ -55,6 +55,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         'episode': [],
         'reward': [], # cummulated reward
         'curiosity_reward': [], # cummulated reward with information gain
+        'likelihood': [], # likelihood of leanred dynamics model
         'D_KL_median': [], 'D_KL_mean': [],
         'q1_loss': [], 'policy_loss': [], 'alpha_loss': [], 'alpha': [],
         'ELBO': [],
@@ -129,10 +130,11 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         if use_vime and len(memory) >= conf.random_sample_num:
             # Calculate curiosity reward in VIME
             o_batch, a_batch, _, o_next_batch, _ = zip(*sample_buffer)
-            info_gains = vime.calc_info_gain(o_batch, a_batch, o_next_batch)
+            info_gains, log_likelihoods = vime.calc_info_gain(o_batch, a_batch, o_next_batch)
             assert not np.isnan(info_gains).any() and not np.isinf(info_gains).any(), "invalid information gain, {}".format(info_gains)
             curiosity_rewards = vime.calc_curiosity_reward(np.array(rewards), info_gains)
         else:
+            log_likelihoods = np.ones_like(rewards) * -np.inf
             curiosity_rewards = rewards
         # Push collected samples into replay buffer
         for (o, a, _, o_next, done), cr in zip(sample_buffer, curiosity_rewards):
@@ -142,8 +144,8 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         episodic_reward = np.sum(rewards)
         reward_moving_avg = episodic_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * episodic_reward
         if use_vime:
-            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.2E}, Rwd {:.1f} (moving avg {:.1f})".format(
-                episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg))
+            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.2E}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.1f}".format(
+                episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg, np.mean(np.exp(log_likelihoods))))
         else:
             pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Rwd {:.1f} (mov avg {:.1f})".format(
                 episode, memory.step, len(memory), len(rewards), episodic_reward, reward_moving_avg))
@@ -152,8 +154,10 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         metrics['episode'].append(episode)
         metrics['reward'].append(episodic_reward)
         metrics['curiosity_reward'].append(np.sum(curiosity_rewards))
+        metrics['likelihood'].append(np.mean(np.exp(log_likelihoods)))
         lineplot(metrics['episode'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
         lineplot(metrics['episode'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
+        lineplot(metrics['episode'][-len(metrics['likelihood']):], metrics['likelihood'], 'likelihood', log_dir)
         # Agent update related metrics
         if len(policy_losses) > 0:
             metrics['q1_loss'].append(np.mean(q1_losses))
