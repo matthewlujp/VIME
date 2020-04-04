@@ -93,8 +93,9 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
     for episode in pbar:
         o = env.reset()
-        rewards, curiosity_rewards = [], []
-        info_gains = []
+        rewards = []
+        info_gains = None
+        sample_buffer = []
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
 
         for t in range(env._max_episode_steps):
@@ -104,19 +105,9 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 a = agent.select_action(o, eval=False)
 
             o_next, r, done, _ = env.step(a)
-            rewards.append(r)
-
-            # Calculate curiosity reward in VIME
-            if use_vime and len(memory) >= conf.random_sample_num:
-                info_gain = vime.calc_info_gain(o, a, o_next)
-                assert not np.isnan(info_gain) and not np.isinf(info_gain), "invalid information gain, {}".format(info_gain)
-                info_gains.append(info_gain)
-                r = vime.calc_curiosity_reward(r, info_gain)
-            curiosity_rewards.append(r)
-
             done = False if t == env._max_episode_steps - 1 else bool(done)  # done should be False if an episode is terminated forcefully
-
-            memory.append(o, a, r, o_next, done)
+            rewards.append(r)
+            sample_buffer.append((o, a, r, o_next, done))
             o = o_next
 
             # Update agent
@@ -133,6 +124,19 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
             if done:
                 break
+
+        # Calculate curiosity reward
+        if use_vime and len(memory) >= conf.random_sample_num:
+            # Calculate curiosity reward in VIME
+            o_batch, a_batch, _, o_next_batch, _ = zip(*sample_buffer)
+            info_gains = vime.calc_info_gain(o_batch, a_batch, o_next_batch)
+            assert not np.isnan(info_gains).any() and not np.isinf(info_gains).any(), "invalid information gain, {}".format(info_gains)
+            curiosity_rewards = vime.calc_curiosity_reward(np.array(rewards), info_gains)
+        else:
+            curiosity_rewards = rewards
+        # Push collected samples into replay buffer
+        for (o, a, _, o_next, done), cr in zip(sample_buffer, curiosity_rewards):
+            memory.append(o, a, cr, o_next, done)
 
         # Display performance
         episodic_reward = np.sum(rewards)
@@ -151,7 +155,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         lineplot(metrics['episode'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
         lineplot(metrics['episode'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
         # Agent update related metrics
-        if len(memory) > conf.random_sample_num:
+        if len(policy_losses) > 0:
             metrics['q1_loss'].append(np.mean(q1_losses))
             metrics['policy_loss'].append(np.mean(policy_losses))
             metrics['alpha_loss'].append(np.mean(alpha_losses))
@@ -164,13 +168,14 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
         # Update VIME
         if use_vime and len(memory) >= conf.random_sample_num:
-            vime.memorize_episodic_info_gains(info_gains)            
             elbo = vime.update_posterior(memory)
             metrics['ELBO'].append(elbo)
-            metrics['D_KL_median'].append(np.median(info_gains))
-            metrics['D_KL_mean'].append(np.mean(info_gains))
             lineplot(metrics['episode'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
-            multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
+            if info_gains is not None:
+                vime.memorize_episodic_info_gains(info_gains)            
+                metrics['D_KL_median'].append(np.median(info_gains))
+                metrics['D_KL_mean'].append(np.mean(info_gains))
+                multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
 
         
 

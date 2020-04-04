@@ -58,26 +58,35 @@ class VIME(nn.Module):
     def calc_info_gain(self, s, a, s_next):
         """Calculate information gain D_KL[ q( /cdot | \phi') || q( /cdot | \phi_n) ].
         """
+        sample_num = len(s)
         self._dynamics_model.set_params(self._params_mu, self._params_rho) # necessary to calculate new gradient
-        ll = self._dynamics_model.calc_log_likelihood(
-            torch.tensor(s_next, dtype=torch.float32).to(self._device).unsqueeze(0),
-            torch.tensor(s, dtype=torch.float32).to(self._device).unsqueeze(0),
-            torch.tensor(a, dtype=torch.float32).to(self._device).unsqueeze(0)
-            ).squeeze(0)
-        self._optim.zero_grad()
-        (-ll).backward()  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
-        nabla = torch.cat([self._params_mu.grad.data, self._params_rho.grad.data])
-        nabla = torch.clamp(nabla, min=-self._nabla_limit, max=self._nabla_limit) # limit absolute value of nabla
-        assert not torch.isnan(nabla).any() and not torch.isinf(nabla).any(), "ll {}\nnabla {}".format(ll, nabla)
-        H = self._calc_hessian()
-        assert not torch.isinf(nabla.data.pow(2)).any(), "nabla_rho\n{}\nnabla_rho^2\n{}".format(nabla.data, nabla.data.pow(2))
-        assert not torch.isinf(H.pow(-1)).any(), H.pow(-1)
+        l = - self._dynamics_model.calc_log_likelihood(
+            torch.tensor(s_next, dtype=torch.float32).to(self._device),
+            torch.tensor(s, dtype=torch.float32).to(self._device),
+            torch.tensor(a, dtype=torch.float32).to(self._device))
+        # assert l.size() == torch.Size([sample_num]), l
+
+        # Calculate nablas for each sample
+        nablas = []
+        for i in range(sample_num):
+            self._optim.zero_grad()
+            l[i].backward(retain_graph=True)  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
+            nabla = torch.cat([self._params_mu.grad.data, self._params_rho.grad.data])
+            nabla = torch.clamp(nabla, min=-self._nabla_limit, max=self._nabla_limit) # limit absolute value of nabla　TODO: remove
+            # assert not torch.isnan(nabla).any() and not torch.isinf(nabla).any(), "ll {}\nnabla {}".format(ll, nabla)
+            # assert not torch.isinf(nabla.data.pow(2)).any(), "nabla_rho\n{}\nnabla_rho^2\n{}".format(nabla.data, nabla.data.pow(2))
+            nablas.append(nabla)
+        nablas = torch.stack(nablas)
+        # assert nablas.size() == torch.Size([sample_num, len(self._params_mu) + len(self._params_rho)]), nablas.size()
+
+        H = self._calc_hessian().repeat([sample_num, 1])  # [sample_num x parameter_num]
+        # assert H.size() == torch.Size([sample_num, len(self._params_mu) + len(self._params_rho)]), H.size()
         
         # \frac{\lambda^2}{2} (\nabla_\phi l)^{\rm T} H^{-1} (\nabla_\phi^{\rm T} l)
         with torch.no_grad():
-            info_gain = self._lamb ** 2 / 2 * (nabla.pow(2) * H.pow(-1)).sum()
-            assert not torch.isinf(info_gain).any(), info_gain
-        return info_gain.cpu().item()
+            info_gain = .5 * self._lamb ** 2 * torch.sum(nablas.pow(2) * H.pow(-1), dim=1)
+            # assert not torch.isinf(info_gain).any(), info_gain
+        return info_gain.cpu().numpy()
 
     def _calc_hessian(self):
         """Return diagonal elements of H = [ \frac{\partial^2 l_{D_{KL}}}{{\partial \phi_j}^2} ]_j
@@ -108,7 +117,7 @@ class VIME(nn.Module):
             batch_s_next = torch.tensor(batch_s_next, dtype=torch.float32).to(self._device)
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
 
-            log_likelihood = self._dynamics_model.calc_log_likelihood(batch_s_next, batch_s, batch_a)
+            log_likelihood = self._dynamics_model.calc_log_likelihood(batch_s_next, batch_s, batch_a).mean()
             assert not torch.isnan(log_likelihood).any() and not torch.isinf(log_likelihood).any(), log_likelihood.item()
             div_kl = self._calc_div_kl(prev_mu, prev_var)
             assert not torch.isnan(div_kl).any() and not torch.isinf(div_kl).any(), div_kl.item()
@@ -207,16 +216,15 @@ class BNN:
     def infer(self, s, a):
         """Forward calculate with local reparameterization.
         """
-        assert not torch.isnan(s).any() and not torch.isinf(s).any(), s
-        assert not torch.isnan(a).any() and not torch.isinf(a).any(), a
-
+        # assert not torch.isnan(s).any() and not torch.isinf(s).any(), s
+        # assert not torch.isnan(a).any() and not torch.isinf(a).any(), a
         X = torch.cat([s, a], dim=1)
-        batch_size = X.size(0)
-        assert X.size() == torch.Size([batch_size, self._input_size]), X.size()
+        # batch_size = X.size(0)
+        # assert X.size() == torch.Size([batch_size, self._input_size]), X.size()
         X = F.relu(self._linear(self._W1_mu, self._b1_mu, self._W1_var, self._b1_var, X))
-        assert not torch.isnan(X).any() and not torch.isinf(X).any(), X
+        # assert not torch.isnan(X).any() and not torch.isinf(X).any(), X
         X = self._linear(self._W2_mu, self._b2_mu, self._W2_var, self._b2_var, X)
-        assert not torch.isnan(X).any() and not torch.isinf(X).any(), X
+        # assert not torch.isnan(X).any() and not torch.isinf(X).any(), X
         mean, logvar = X[:, :self._observation_size], X[:, self._observation_size:]
         logvar = torch.clamp(logvar, min=self._max_logvar, max=self._max_logvar)
         return mean, logvar
@@ -225,20 +233,20 @@ class BNN:
     def _linear(W_mu, b_mu, W_var, b_var, X):
         """Linear forward calculation with local reparameterization trick.
         """
-        assert not torch.isnan(W_mu).any() and not torch.isinf(W_mu).any(), W_mu
-        assert not torch.isnan(b_mu).any() and not torch.isinf(b_mu).any(), b_mu
-        assert not torch.isnan(W_var).any() and not torch.isinf(W_var).any(), W_var
-        assert not torch.isnan(b_var).any() and not torch.isinf(b_var).any(), b_var
+        # assert not torch.isnan(W_mu).any() and not torch.isinf(W_mu).any(), W_mu
+        # assert not torch.isnan(b_mu).any() and not torch.isinf(b_mu).any(), b_mu
+        # assert not torch.isnan(W_var).any() and not torch.isinf(W_var).any(), W_var
+        # assert not torch.isnan(b_var).any() and not torch.isinf(b_var).any(), b_var
 
         gamma = X @ W_mu + b_mu
         delta = X.pow(2) @ W_var + b_var
-        assert not torch.isnan(gamma).any(), gamma
-        assert not torch.isnan(delta).any(), delta
-        assert not torch.isnan(delta.pow(.5)).any(), delta.pow(.5)
+        # assert not torch.isnan(gamma).any(), gamma
+        # assert not torch.isnan(delta).any(), delta
+        # assert not torch.isnan(delta.pow(.5)).any(), delta.pow(.5)
 
         zeta = Normal(torch.zeros_like(delta), torch.ones_like(delta)).sample().to(gamma.device)
         r = gamma + delta.pow(0.5) * zeta
-        assert not torch.isnan(r).any() and not torch.isinf(r).any(), r
+        # assert not torch.isnan(r).any() and not torch.isinf(r).any(), r
         return r
 
     def calc_log_likelihood(self, batch_s_next, batch_s, batch_a):
@@ -252,17 +260,17 @@ class BNN:
         # print("s_{t+1} logvar:", s_next_logvar[0])
         # print("p(s_{t+1}) =", torch.distributions.Normal(s_next_mean[0], (s_next_logvar[0] / 2).exp()).log_prob(batch_s_next[0]).sum().exp().item())
         # print('----------')
-        assert not torch.isnan(s_next_mean).any() and not torch.isinf(s_next_mean).any(), s_next_mean
-        assert not torch.isnan(s_next_logvar).any() and not torch.isinf(s_next_logvar).any(), s_next_logvar
+        # assert not torch.isnan(s_next_mean).any() and not torch.isinf(s_next_mean).any(), s_next_mean
+        # assert not torch.isnan(s_next_logvar).any() and not torch.isinf(s_next_logvar).any(), s_next_logvar
 
         # log p(s_next)
         # = log N(s_next | s_next_mean, exp(s_next_logvar))
         # = -\frac{1}{2} \sum^d_j [ logvar_j + (s_next_j - s_next_mean)^2 exp(- logvar_j) ]  - \frac{d}{2} \log (2\pi)
         ll = - .5 * ( s_next_logvar + (batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp() ).sum(dim=1) - .5 * self._observation_size * np.log(2 * np.pi)
-        assert not torch.isinf((- s_next_logvar).exp()).any(), "s_next_logvar\n{}\nexp(-s_next_logvar)\n{}".format(s_next_logvar, (- s_next_logvar).exp())
-        assert not torch.isinf((batch_s_next - s_next_mean).pow(2)).any(), (batch_s_next - s_next_mean).pow(2)
-        assert not torch.isinf((batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp()).any(), (batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp()
+        # assert not torch.isinf((- s_next_logvar).exp()).any(), "s_next_logvar\n{}\nexp(-s_next_logvar)\n{}".format(s_next_logvar, (- s_next_logvar).exp())
+        # assert not torch.isinf((batch_s_next - s_next_mean).pow(2)).any(), (batch_s_next - s_next_mean).pow(2)
+        # assert not torch.isinf((batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp()).any(), (batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp()
         # print("p(s_{t+1} | s_t, a_t, theta) =", ll.exp().mean().item(), "\tloglikelihood =", ll.mean().item())
-        assert ll.size(0) == batch_s_next.size(0)
-        return ll.mean()
+        # assert ll.size(0) == batch_s_next.size(0)
+        return ll
 
