@@ -202,14 +202,6 @@ class BNN:
         self._W2_var = torch.log(1 + params_rho[W1_size + b1_size : W1_size + b1_size + W2_size].reshape(self._W2_var.size()).exp()).pow(2)
         self._b2_var = torch.log(1 + params_rho[W1_size + b1_size + W2_size : W1_size + b1_size + W2_size + b2_size].reshape(self._b2_var.size()).exp()).pow(2)
 
-    def get_params(self):
-        params_mu = torch.cat([self._W1_mu.data.reshape(-1), self._b1_mu.data.reshape(-1), self._W2_mu.data.reshape(-1), self._b2_mu.data.reshape(-1)])
-        params_rho = torch.cat([
-            (self._W1_var.data.pow(.5).exp() - 1).log().reshape(-1), (self._b1_var.data.pow(.5).exp() - 1).log().reshape(-1),
-            (self._W2_var.data.pow(.5).exp() - 1).log().reshape(-1), (self._b2_var.data.pow(.5).exp() - 1).log().reshape(-1),
-        ])
-        return params_mu, params_rho
-
     def infer(self, s, a):
         """Forward calculate with local reparameterization.
         """
@@ -217,7 +209,7 @@ class BNN:
         X = F.relu(self._linear(self._W1_mu, self._b1_mu, self._W1_var, self._b1_var, X))
         X = self._linear(self._W2_mu, self._b2_mu, self._W2_var, self._b2_var, X)
         mean, logvar = X[:, :self._observation_size], X[:, self._observation_size:]
-        logvar = torch.clamp(logvar, min=self._max_logvar, max=self._max_logvar)
+        logvar = torch.clamp(logvar, min=self._min_logvar, max=self._max_logvar)
         return mean, logvar
 
     @staticmethod
