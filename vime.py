@@ -35,8 +35,8 @@ class VIME(nn.Module):
         self._prev_D_KL_medians = deque(maxlen=D_KL_smooth_length)
 
         self._dynamics_model = BNN(observation_size, action_size, hidden_size, max_logvar, min_logvar)
-        self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number)).to(device)
-        self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number)).to(device)
+        self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number).to(device))
+        self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number).to(device))
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
         self._optim = Adam([self._params_mu, self._params_rho], lr=learning_rate) 
 
