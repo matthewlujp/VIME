@@ -172,7 +172,8 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
         # Update VIME
         if use_vime and len(memory) >= conf.random_sample_num:
-            elbo = vime.update_posterior(memory)
+            for _ in range(conf.vime_update_per_episode):
+                elbo = vime.update_posterior(memory)
             metrics['ELBO'].append(elbo)
             lineplot(metrics['episode'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
             if info_gains is not None:
