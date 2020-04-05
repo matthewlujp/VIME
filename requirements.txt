@@ -1,10 +1,10 @@
-gym
+gym==0.15.4
+roboschool==1.0.48
 plotly
 tqdm
 toml
 matplotlib
 numpy
-torch
-torchvision
-opencv-python
-roboschool==1.0.48
+torch==1.1.0
+torchvision==0.4.0
+opencv-python==4.1.1.26

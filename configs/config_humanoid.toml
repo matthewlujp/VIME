@@ -1,0 +1,31 @@
+environment = "RoboschoolHumanoid-v1"
+episodes = 10000
+replay_buffer_capacity = 1000000
+batch_size = 256
+random_sample_num = 1000
+checkpoint_interval = 10
+checkpoint = ''
+test_interval = 50
+test_times = 5
+agent_update_per_step = 1
+vime_update_per_episode = 1
+
+[agent]
+gamma = 0.99
+tau = 0.005
+alpha = 0.2
+target_update_interval = 1
+automatic_entropy_tuning = true
+learning_rate = 0.0003
+hidden_size = 256
+
+[vime]
+lamb = 0.01
+eta = 0.1
+batch_size = 512
+update_iterations = 500
+hidden_size = 64
+D_KL_smooth_length = 10
+learning_rate = 0.0001
+max_logvar = 2.0
+min_logvar = -10.0

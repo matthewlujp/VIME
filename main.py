@@ -20,11 +20,6 @@ from vime import VIME
 
 
 
-ENV_NAME = "RoboschoolHalfCheetah-v1"
-
-
-
-
 def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     conf_d = toml.load(open(config_file_path))
     conf = namedtuple('Config', conf_d.keys())(*conf_d.values())
@@ -53,17 +48,20 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     # Set up log metrics
     metrics = {
         'episode': [],
+        'collected_samples': [],
         'reward': [], # cummulated reward
         'curiosity_reward': [], # cummulated reward with information gain
         'likelihood': [], # likelihood of leanred dynamics model
         'D_KL_median': [], 'D_KL_mean': [],
         'q1_loss': [], 'policy_loss': [], 'alpha_loss': [], 'alpha': [],
         'ELBO': [],
+        'step': [], 'step_reward': [],
         'test_episode': [], 'test_reward': [],
     }
 
     # Set up environment
-    env = gym.make(ENV_NAME)
+    print("Train in {}".format(conf.environment))
+    env = gym.make(conf.environment)
 
     # Training set up
     agent = SAC(env.observation_space, env.action_space, device, **conf.agent)
@@ -79,11 +77,17 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             vime.load_state_dict(ckpt['vime'])
 
     def save_checkpoint():
+        # Save checkpoint
         ckpt = {'metrics': metrics, 'agent': agent.state_dict(), 'memory': memory.state_dict()}
         if use_vime:
             ckpt['vime'] = vime.state_dict()
         path = os.path.join(ckpt_dir, 'checkpoint.pth')
         torch.save(ckpt, path)
+
+        # Save agent model
+        model_ckpt = {'agent': agent.state_dict()}
+        model_path = os.path.join(ckpt_dir, 'model.pth')
+        torch.save(model_ckpt, model_path)
 
     # Train agent
     init_episode = 0 if len(metrics['episode']) == 0 else metrics['episode'][-1] + 1
@@ -91,6 +95,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     reward_moving_avg = None
     moving_avg_coef = 0.1
     agent_update_count = 0
+    total_steps = 0
 
     for episode in pbar:
         o = env.reset()
@@ -106,6 +111,9 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
                 a = agent.select_action(o, eval=False)
 
             o_next, r, done, _ = env.step(a)
+            total_steps += 1
+            metrics['step'].append(total_steps)
+            metrics['step_reward'].append(r)
             done = False if t == env._max_episode_steps - 1 else bool(done)  # done should be False if an episode is terminated forcefully
             rewards.append(r)
 
@@ -144,7 +152,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         episodic_reward = np.sum(rewards)
         reward_moving_avg = episodic_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * episodic_reward
         if use_vime:
-            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.1f}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.1f}".format(
+            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.1f}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.3E}".format(
                 episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg, np.mean(np.exp(log_likelihoods))))
         else:
             pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Rwd {:.1f} (mov avg {:.1f})".format(
@@ -152,22 +160,27 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
         # Save episodic metrics
         metrics['episode'].append(episode)
+        metrics['collected_samples'].append(total_steps)
         metrics['reward'].append(episodic_reward)
         metrics['curiosity_reward'].append(np.sum(curiosity_rewards))
         metrics['likelihood'].append(np.mean(np.exp(log_likelihoods)))
-        lineplot(metrics['episode'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
-        lineplot(metrics['episode'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
-        lineplot(metrics['episode'][-len(metrics['likelihood']):], metrics['likelihood'], 'likelihood', log_dir)
+        if episode % 10 == 0:
+            lineplot(metrics['step'][-len(metrics['step_reward']):], metrics['step_reward'], 'stepwise_reward', log_dir, xaxis='total step')
+            lineplot(metrics['episode'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
+            lineplot(metrics['collected_samples'][-len(metrics['reward']):], metrics['reward'], 'sample-reward', log_dir, xaxis='total step')
+            lineplot(metrics['episode'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
+            lineplot(metrics['episode'][-len(metrics['likelihood']):], metrics['likelihood'], 'likelihood', log_dir)
         # Agent update related metrics
         if len(policy_losses) > 0:
             metrics['q1_loss'].append(np.mean(q1_losses))
             metrics['policy_loss'].append(np.mean(policy_losses))
             metrics['alpha_loss'].append(np.mean(alpha_losses))
             metrics['alpha'].append(np.mean(alphas))
-            lineplot(metrics['episode'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
-            lineplot(metrics['episode'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
-            lineplot(metrics['episode'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
-            lineplot(metrics['episode'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
+            if episode % 10 == 0:
+                lineplot(metrics['episode'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
+                lineplot(metrics['episode'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
+                lineplot(metrics['episode'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
+                lineplot(metrics['episode'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
 
 
         # Update VIME
@@ -216,7 +229,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
 
 
 
-def evaluate(config_file_path: str, model_filepath: str, max_episode_length: int, render: bool):
+def evaluate(config_file_path: str, model_filepath: str, render: bool):
     conf_d = toml.load(open(config_file_path))
     conf = namedtuple('Config', conf_d.keys())(*conf_d.values())
 
@@ -225,7 +238,7 @@ def evaluate(config_file_path: str, model_filepath: str, max_episode_length: int
     torch.manual_seed(int(time.time()))
     device = torch.device('cpu')
 
-    env = gym.make(ENV_NAME)
+    env = gym.make(conf.environment)
     agent = SAC(env.observation_space, env.action_space, device, **conf.agent)
     ckpt = torch.load(model_filepath, map_location='cpu')
     agent.load_state_dict(ckpt['agent'])
@@ -235,13 +248,15 @@ def evaluate(config_file_path: str, model_filepath: str, max_episode_length: int
         env.render()
     done = False
     episode_reward = 0
+    t = 0
     while not done:
         a = agent.select_action(o, eval=True)
         o_next, r, done, _ = env.step(a)
         episode_reward += r
         o = o_next
+        t += 1
 
-    print("REWARD {}".format(episode_reward))
+    print("STEPS: {}, REWARD: {}".format(t, episode_reward))
     input("OK? >")
 
 
@@ -261,10 +276,9 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--eval', action='store_true', help='Run model evaluation.')
     parser.add_argument('-m', '--model-filepath', default='', help='Path to trained model for evaluation.')
     parser.add_argument('-r', '--render', action='store_true', help='Render agent behavior during evaluation.')
-    parser.add_argument('--max-episode-length', type=int, default=100000, help='Max episode duration for evaluation.')
     args = parser.parse_args()
 
     if args.eval:
-        evaluate(args.config, args.model_filepath, args.max_episode_length, args.render)
+        evaluate(args.config, args.model_filepath, args.render)
     else:
         train(args.config, args.save_dir, args.vime, args.device)
