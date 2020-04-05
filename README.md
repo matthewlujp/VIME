@@ -33,8 +33,8 @@ Options
 ```
 
 
-### Implementation memos
-
+### Implementation notes
+Explanation of implementation is in [Implementation notes of "VIME: Variational Information Maximizing Exploration"](https://qiita.com/matthewlujp/items/84ffa27ab63ac9800824).
 
 
 
@@ -45,18 +45,44 @@ Performance of reinforcement learning with and without VIME was compared in the 
 * RoboschoolHumanoid-v1
 * RoboschoolHalfCheetah-v1 (with sparse reward)
 
+In HalfCheetah, +1.0 was provided as a reward when a body moved more than 5 units.
 [Soft actor-critic (SAC)](https://arxiv.org/abs/1812.05905) is used as a base method.
 
-##### RoboschoolInvertedDoublePendulum-v1
-![RoboschoolInvertedDoublePendulum-v1]<img width="数値" alt="代替テキスト" src="">![RoboschoolWalker2d-v1]<img width="数値" alt="代替テキスト" src="">
+|InvertedDoublePendulum-v1|Walker2d-v1|
+|---|---|
+|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|
 
-##### RoboschoolWalker2d-v1
+|Humanoid-v1|HalfCheetah-v1 (sparse reward)|
+|---|---|
+|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|
 
 
-##### RoboschoolHumanoid-v1
+##### Note on modifying environment
+An instance of RoboschoolHalfCheetah-v1 holds body position to calculate a reward.
+The information can be accessed by ```env.body_xyz[0]``` (see [gym_forward_walker.py](https://github.com/openai/roboschool/blob/master/roboschool/gym_forward_walker.py) for details).  
 
+RoboschoolHalfCheetah-v1 was wraped in a new environment "SparseHalfCheetah", which returns a reward of +1.0 when a body moves more than 5 units. 
+To create a new custom environment, define a class which inherits ```gym.Env``` and implement the follow methods.
+* reset
+* step
+* render
+* close
+* seed
 
-##### RoboschoolHalfCheetah-v1 (with sparse reward)
+By registering the newly defined environment, you can instantiate the environment using ```gym.make``` method.
+```python
+from gym.envs.registration import register
+register(
+    id='EnvironmentName-v1',
+    entry_point=NewEnvironmentClass,
+    max_episode_steps=1000,
+    reward_threshold=1,
+    kwargs={},
+)
+```
+
+You can provide keyword arguments to the new class through kwargs.
+For further information, refer to [registration.py](https://github.com/openai/gym/blob/master/gym/envs/registration.py).
 
 
 
