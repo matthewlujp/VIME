@@ -20,7 +20,7 @@ from vime import VIME
 
 
 
-def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
+def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, visualize_interval: int):
     conf_d = toml.load(open(config_file_path))
     conf = namedtuple('Config', conf_d.keys())(*conf_d.values())
 
@@ -60,7 +60,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
     }
 
     # Set up environment
-    print("Train in {}".format(conf.environment))
+    print("----------------------------------------\nTrain in {}\n----------------------------------------".format(conf.environment))
     env = gym.make(conf.environment)
 
     # Training set up
@@ -152,7 +152,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         episodic_reward = np.sum(rewards)
         reward_moving_avg = episodic_reward if reward_moving_avg is None else (1-moving_avg_coef) * reward_moving_avg + moving_avg_coef * episodic_reward
         if use_vime:
-            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.1f}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.3E}".format(
+            pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Curiosity {:.1f}, Rwd {:.1f} (m.avg {:.1f}), Likelihood {:.2E}".format(
                 episode, memory.step, len(memory), len(rewards), np.sum(curiosity_rewards), episodic_reward, reward_moving_avg, np.mean(np.exp(log_likelihoods))))
         else:
             pbar.set_description("EPISODE {}, TOTAL STEPS {}, SAMPLES {} --- Steps {}, Rwd {:.1f} (mov avg {:.1f})".format(
@@ -164,7 +164,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
         metrics['reward'].append(episodic_reward)
         metrics['curiosity_reward'].append(np.sum(curiosity_rewards))
         metrics['likelihood'].append(np.mean(np.exp(log_likelihoods)))
-        if episode % 10 == 0:
+        if episode % visualize_interval == 0:
             lineplot(metrics['step'][-len(metrics['step_reward']):], metrics['step_reward'], 'stepwise_reward', log_dir, xaxis='total step')
             lineplot(metrics['episode'][-len(metrics['reward']):], metrics['reward'], 'reward', log_dir)
             lineplot(metrics['collected_samples'][-len(metrics['reward']):], metrics['reward'], 'sample-reward', log_dir, xaxis='total step')
@@ -176,7 +176,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str):
             metrics['policy_loss'].append(np.mean(policy_losses))
             metrics['alpha_loss'].append(np.mean(alpha_losses))
             metrics['alpha'].append(np.mean(alphas))
-            if episode % 10 == 0:
+            if episode % visualize_interval == 0:
                 lineplot(metrics['episode'][-len(metrics['q1_loss']):], metrics['q1_loss'], 'q1_loss', log_dir)
                 lineplot(metrics['episode'][-len(metrics['policy_loss']):], metrics['policy_loss'], 'policy_loss', log_dir)
                 lineplot(metrics['episode'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
@@ -272,6 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', default='default_config.toml', help='Config file path')
     parser.add_argument('--save-dir', default=os.path.join('results', 'test'), help='Save directory')
     parser.add_argument('--vime', action='store_true', help='Whether to use VIME.')
+    parser.add_argument('--visualize-interval', default=25, type=int, help='Interval to draw graphs of metrics.')
     parser.add_argument('--device', default='cpu', choices={'cpu', 'cuda:0', 'cuda:1', 'cuda:2', 'cuda:3'}, help='Device for computation.')
     parser.add_argument('-e', '--eval', action='store_true', help='Run model evaluation.')
     parser.add_argument('-m', '--model-filepath', default='', help='Path to trained model for evaluation.')
@@ -281,4 +282,4 @@ if __name__ == '__main__':
     if args.eval:
         evaluate(args.config, args.model_filepath, args.render)
     else:
-        train(args.config, args.save_dir, args.vime, args.device)
+        train(args.config, args.save_dir, args.vime, args.device, args.visualize_interval)

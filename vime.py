@@ -5,10 +5,9 @@ from collections import deque
 import numpy as np
 import torch
 from torch import nn 
-from torch.nn import functional as F
-from torch.distributions.normal import Normal
 from torch.optim import Adam
 
+from bayesian_neural_network import BNN
 
 
 class VIME(nn.Module):
@@ -22,7 +21,7 @@ class VIME(nn.Module):
     ]
 
     def __init__(self, observation_size, action_size, device='cpu', eta=0.1, lamb=0.01, batch_size=10, update_iterations=500,
-            learning_rate=0.0001, hidden_size=64, D_KL_smooth_length=10, max_logvar=2., min_logvar=-10.):
+            learning_rate=0.0001, hidden_layers=2, hidden_layer_size=64, D_KL_smooth_length=10, max_logvar=2., min_logvar=-10.):
         super().__init__()
 
         self._update_iterations = update_iterations
@@ -34,9 +33,10 @@ class VIME(nn.Module):
         self._D_KL_smooth_length = D_KL_smooth_length
         self._prev_D_KL_medians = deque(maxlen=D_KL_smooth_length)
 
-        self._dynamics_model = BNN(observation_size, action_size, hidden_size, max_logvar, min_logvar)
-        self._params_mu = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number).to(device))
-        self._params_rho = nn.Parameter(torch.zeros(self._dynamics_model.network_parameter_number).to(device))
+        self._dynamics_model = BNN(observation_size + action_size, observation_size, hidden_layers, hidden_layer_size, max_logvar, min_logvar)
+        init_params_mu, init_params_rho = self._dynamics_model.get_parameters()
+        self._params_mu = nn.Parameter(init_params_mu.to(device))
+        self._params_rho = nn.Parameter(init_params_rho.to(device))
         self._H = self._calc_hessian()
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
         self._optim = Adam([self._params_mu, self._params_rho], lr=learning_rate) 
@@ -62,10 +62,9 @@ class VIME(nn.Module):
         Return info_gain, log-likelihood of each sample \log p(s_{t+1}, a_t, s_)
         """
         self._dynamics_model.set_params(self._params_mu, self._params_rho) # necessary to calculate new gradient
-        ll = self._dynamics_model.calc_log_likelihood(
-            torch.tensor(s_next, dtype=torch.float32).to(self._device).unsqueeze(0),
-            torch.tensor(s, dtype=torch.float32).to(self._device).unsqueeze(0),
-            torch.tensor(a, dtype=torch.float32).to(self._device).unsqueeze(0))
+        ll = self._dynamics_model.log_likelihood(
+            torch.tensor(np.concatenate([s, a]), dtype=torch.float32).unsqueeze(0).to(self._device),
+            torch.tensor(s_next, dtype=torch.float32).unsqueeze(0).to(self._device))
         l = - ll.mean()
 
         self._optim.zero_grad()
@@ -112,7 +111,7 @@ class VIME(nn.Module):
             batch_s_next = torch.tensor(batch_s_next, dtype=torch.float32).to(self._device)
 
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
-            log_likelihood = self._dynamics_model.calc_log_likelihood(batch_s_next, batch_s, batch_a).mean()
+            log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next).mean()
             div_kl = self._calc_div_kl(prev_mu, prev_var)
 
             elbo = log_likelihood - div_kl
@@ -148,84 +147,3 @@ class VIME(nn.Module):
                 setattr(self, k, v)         
 
         
-
-class BNN:
-    def __init__(self, observation_size, action_size, hidden_size, max_logvar, min_logvar):
-        self._input_size = observation_size + action_size
-        self._observation_size = observation_size
-        self._max_logvar = max_logvar
-        self._min_logvar = min_logvar
-
-        self._W1_mu = torch.zeros(observation_size + action_size, hidden_size)
-        self._b1_mu = torch.zeros(hidden_size)
-        self._W2_mu = torch.zeros(hidden_size, observation_size * 2)
-        self._b2_mu = torch.zeros(observation_size * 2) # to obtain mean and logvar
-
-        self._W1_var = torch.ones(observation_size + action_size, hidden_size)
-        self._b1_var = torch.ones(hidden_size)
-        self._W2_var = torch.ones(hidden_size, observation_size * 2)
-        self._b2_var = torch.ones(observation_size * 2) # to obtain mean and logvar
-
-        W1_size, b1_size = np.prod(self._W1_mu.size()), np.prod(self._b1_mu.size())
-        W2_size, b2_size = np.prod(self._W2_mu.size()), np.prod(self._b2_mu.size())
-        self._network_parameter_num = W1_size + b1_size + W2_size + b2_size
-
-    @property
-    def network_parameter_number(self):
-        return self._network_parameter_num
-
-    def set_params(self, params_mu, params_rho):
-        """Set a vector of parameters into weights and biases.
-        """
-        assert params_mu.size() == torch.Size([self._network_parameter_num]), "expected {}, got {}".format(self._network_parameter_num, params_mu.size())
-        assert params_rho.size() == torch.Size([self._network_parameter_num]), "expected {}, got {}".format(self._network_parameter_num, params_rho.size())
-        W1_size, b1_size = np.prod(self._W1_mu.size()), np.prod(self._b1_mu.size())
-        W2_size, b2_size = np.prod(self._W2_mu.size()), np.prod(self._b2_mu.size())
-
-        # Set \mus
-        self._W1_mu = params_mu[0 : W1_size].reshape(self._W1_mu.size())
-        self._b1_mu = params_mu[W1_size : W1_size + b1_size].reshape(self._b1_mu.size())
-        self._W2_mu = params_mu[W1_size + b1_size : W1_size + b1_size + W2_size].reshape(self._W2_mu.size())
-        self._b2_mu = params_mu[W1_size + b1_size + W2_size : W1_size + b1_size + W2_size + b2_size].reshape(self._b2_mu.size())
-
-        # Set \rho
-        self._W1_var = torch.log(1 + params_rho[0 : W1_size].reshape(self._W1_var.size()).exp()).pow(2)
-        self._b1_var = torch.log(1 + params_rho[W1_size : W1_size + b1_size].reshape(self._b1_var.size()).exp()).pow(2)
-        self._W2_var = torch.log(1 + params_rho[W1_size + b1_size : W1_size + b1_size + W2_size].reshape(self._W2_var.size()).exp()).pow(2)
-        self._b2_var = torch.log(1 + params_rho[W1_size + b1_size + W2_size : W1_size + b1_size + W2_size + b2_size].reshape(self._b2_var.size()).exp()).pow(2)
-
-    def infer(self, s, a):
-        """Forward calculate with local reparameterization.
-        """
-        X = torch.cat([s, a], dim=1)
-        X = F.relu(self._linear(self._W1_mu, self._b1_mu, self._W1_var, self._b1_var, X))
-        X = self._linear(self._W2_mu, self._b2_mu, self._W2_var, self._b2_var, X)
-        mean, logvar = X[:, :self._observation_size], X[:, self._observation_size:]
-        logvar = torch.clamp(logvar, min=self._min_logvar, max=self._max_logvar)
-        return mean, logvar
-
-    @staticmethod
-    def _linear(W_mu, b_mu, W_var, b_var, X):
-        """Linear forward calculation with local reparameterization trick.
-        """
-        gamma = X @ W_mu + b_mu
-        delta = X.pow(2) @ W_var + b_var
-
-        zeta = Normal(torch.zeros_like(delta), torch.ones_like(delta)).sample().to(gamma.device)
-        r = gamma + delta.pow(0.5) * zeta
-        return r
-
-    def calc_log_likelihood(self, batch_s_next, batch_s, batch_a):
-        """Calculate log likelihoods.
-        Weights are sampled per data point.
-        Local reparameterization trick is used instead of direct sampling of network parameters.
-        """
-        s_next_mean, s_next_logvar = self.infer(batch_s, batch_a)
-
-        # log p(s_next)
-        # = log N(s_next | s_next_mean, exp(s_next_logvar))
-        # = -\frac{1}{2} \sum^d_j [ logvar_j + (s_next_j - s_next_mean)^2 exp(- logvar_j) ]  - \frac{d}{2} \log (2\pi)
-        ll = - .5 * ( s_next_logvar + (batch_s_next - s_next_mean).pow(2) * (- s_next_logvar).exp() ).sum(dim=1) - .5 * self._observation_size * np.log(2 * np.pi)
-        # assert ll.size(0) == batch_s_next.size(0)
-        return ll
-
