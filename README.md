@@ -62,12 +62,17 @@ An instance of RoboschoolHalfCheetah-v1 holds body position to calculate a rewar
 The information can be accessed by ```env.body_xyz[0]``` (see [gym_forward_walker.py](https://github.com/openai/roboschool/blob/master/roboschool/gym_forward_walker.py) for details).  
 
 RoboschoolHalfCheetah-v1 was wraped in a new environment "SparseHalfCheetah", which returns a reward of +1.0 when a body moves more than 5 units. 
-To create a new custom environment, define a class which inherits ```gym.Env``` and implement the follow methods.
+To create a new custom environment, define a class which inherits ```gym.Env``` and implement follow methods
 * reset
 * step
 * render
 * close
 * seed
+
+and following properties
+* action_space
+* observation_space
+* reward_range
 
 By registering the newly defined environment, you can instantiate the environment using ```gym.make``` method.
 ```python
