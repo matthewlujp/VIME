@@ -7,7 +7,7 @@ checkpoint_interval = 10
 checkpoint = ''
 test_interval = 50
 test_times = 5
-agent_update_batch_size = 256
+agent_update_batch_size = 512
 agent_update_per_step = 1
 vime_update_batch_size = 10
 vime_update_per_episode = 100
@@ -24,7 +24,6 @@ hidden_size = 256
 [vime]
 lamb = 0.01
 eta = 0.1
-update_iterations = 500
 hidden_layers = 2
 hidden_layer_size = 64
 D_KL_smooth_length = 10

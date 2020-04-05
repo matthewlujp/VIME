@@ -108,32 +108,31 @@ class VIME(nn.Module):
         ---
         loss: (float)
         """
+        batch_s = torch.FloatTensor(batch_s).to(self._device)
+        batch_a = torch.FloatTensor(batch_a).to(self._device)
+        batch_s_next = torch.FloatTensor(batch_s_next).to(self._device)
+
         prev_mu, prev_var = self._params_mu.data, (1 + self._params_rho.data.exp()).log().pow(2)
-        for i in range(self._update_iterations):
-            batch_s = torch.FloatTensor(batch_s).to(self._device)
-            batch_a = torch.FloatTensor(batch_a).to(self._device)
-            batch_s_next = torch.FloatTensor(batch_s_next).to(self._device)
+        self._dynamics_model.set_params(self._params_mu, self._params_rho)
+        log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next)
+        div_kl = self._calc_div_kl(prev_mu, prev_var)
 
-            self._dynamics_model.set_params(self._params_mu, self._params_rho)
-            log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next)
-            div_kl = self._calc_div_kl(prev_mu, prev_var)
+        elbo = log_likelihood - div_kl
+        assert not torch.isnan(elbo).any() and not torch.isinf(elbo).any(), elbo.item()
 
-            elbo = log_likelihood - div_kl
-            assert not torch.isnan(elbo).any() and not torch.isinf(elbo).any(), elbo.item()
+        self._optim.zero_grad()
+        (-elbo).backward()
+        self._optim.step()
 
-            self._optim.zero_grad()
-            (-elbo).backward()
-            self._optim.step()
+        # Update hessian
+        self._H = self._calc_hessian()
 
-            # Update hessian
-            self._H = self._calc_hessian()
+        # Check parameters
+        assert not torch.isnan(self._params_mu).any() and not torch.isinf(self._params_mu).any(), self._params_mu
+        assert not torch.isnan(self._params_rho).any() and not torch.isinf(self._params_rho).any(), self._params_rho
 
-            # Check parameters
-            assert not torch.isnan(self._params_mu).any() and not torch.isinf(self._params_mu).any(), self._params_mu
-            assert not torch.isnan(self._params_rho).any() and not torch.isinf(self._params_rho).any(), self._params_rho
-
-            # update self._params
-            self._dynamics_model.set_params(self._params_mu, self._params_rho)
+        # update self._params
+        self._dynamics_model.set_params(self._params_mu, self._params_rho)
 
         return elbo.item()
 
