@@ -17,7 +17,7 @@ import os
 from agents.sac.agent import SAC
 from memory import ReplayBuffer
 from vime import VIME
-
+import envs  # custom environments
 
 
 def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, visualize_interval: int):
@@ -262,11 +262,6 @@ def evaluate(config_file_path: str, model_filepath: str, render: bool):
     print("STEPS: {}, REWARD: {}".format(t, episode_reward))
     input("OK? >")
 
-
-
-
-    
-    
 
 
 
