@@ -20,12 +20,11 @@ class VIME(nn.Module):
         '_optim',
     ]
 
-    def __init__(self, observation_size, action_size, device='cpu', eta=0.1, lamb=0.01, batch_size=10, update_iterations=500,
-            learning_rate=0.0001, hidden_layers=2, hidden_layer_size=64, D_KL_smooth_length=10, max_logvar=2., min_logvar=-10.):
+    def __init__(self, observation_size, action_size, device='cpu', eta=0.1, lamb=0.01, update_iterations=500, learning_rate=0.0001, 
+            hidden_layers=2, hidden_layer_size=64, D_KL_smooth_length=10, max_logvar=2., min_logvar=-10.):
         super().__init__()
 
         self._update_iterations = update_iterations
-        self._batch_size = batch_size
         self._eta = eta
         self._lamb = lamb
         self._device = device
@@ -65,7 +64,7 @@ class VIME(nn.Module):
         ll = self._dynamics_model.log_likelihood(
             torch.tensor(np.concatenate([s, a]), dtype=torch.float32).unsqueeze(0).to(self._device),
             torch.tensor(s_next, dtype=torch.float32).unsqueeze(0).to(self._device))
-        l = - ll.mean()
+        l = - ll
 
         self._optim.zero_grad()
         l.backward()  # Calculate gradient \nabla_\phi l ( = \nalba_\phi -E_{\theta \sim q(\cdot | \phi)}[ \log p(s_{t+1} | \s_t, a_t, \theta) ] )
@@ -97,21 +96,26 @@ class VIME(nn.Module):
         var = (1 + self._params_rho.exp()).log().pow(2)
         return .5 * ( prev_var.log() - var.log() + var / prev_var + (self._params_mu - prev_mu).pow(2) / prev_var ).sum() - .5 * len(self._params_mu)
 
-    def update_posterior(self, memory):
+    def update_posterior(self, batch_s, batch_a, batch_s_next):
         """
+        Params
+        ---
+        batch_s: (batch, observation_size)
+        batch_a: (batch, action_size)
+        batch_s_next: (batch, observation_size)
+
         Return
         ---
         loss: (float)
         """
         prev_mu, prev_var = self._params_mu.data, (1 + self._params_rho.data.exp()).log().pow(2)
         for i in range(self._update_iterations):
-            batch_s, batch_a, _, batch_s_next, _ = memory.sample(self._batch_size)
-            batch_s = torch.tensor(batch_s, dtype=torch.float32).to(self._device)
-            batch_a = torch.tensor(batch_a, dtype=torch.float32).to(self._device)
-            batch_s_next = torch.tensor(batch_s_next, dtype=torch.float32).to(self._device)
+            batch_s = torch.FloatTensor(batch_s).to(self._device)
+            batch_a = torch.FloatTensor(batch_a).to(self._device)
+            batch_s_next = torch.FloatTensor(batch_s_next).to(self._device)
 
             self._dynamics_model.set_params(self._params_mu, self._params_rho)
-            log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next).mean()
+            log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next)
             div_kl = self._calc_div_kl(prev_mu, prev_var)
 
             elbo = log_likelihood - div_kl

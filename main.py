@@ -104,7 +104,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
         log_likelihoods = []
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
 
-        for t in range(env._max_episode_steps):
+        for t in range(conf.horizon):
             if len(memory) < conf.random_sample_num:
                 a = env.action_space.sample()
             else:
@@ -133,7 +133,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
             # Update agent
             if len(memory) >= conf.random_sample_num:
                 for _ in range(conf.agent_update_per_step):
-                    batch_data = memory.sample(conf.batch_size)
+                    batch_data = memory.sample(conf.agent_update_batch_size)
                     q1_loss, q2_loss, policy_loss, alpha_loss, alpha = agent.update_parameters(batch_data, agent_update_count)
                     q1_losses.append(q1_loss)
                     q2_losses.append(q2_loss)
@@ -182,18 +182,16 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
                 lineplot(metrics['episode'][-len(metrics['alpha_loss']):], metrics['alpha_loss'], 'alpha_loss', log_dir)
                 lineplot(metrics['episode'][-len(metrics['alpha']):], metrics['alpha'], 'alpha', log_dir)
 
-
         # Update VIME
         if use_vime and len(memory) >= conf.random_sample_num:
             for _ in range(conf.vime_update_per_episode):
-                elbo = vime.update_posterior(memory)
+                batch_s, batch_a, _, batch_s_next, _ = memory.sample(conf.vime_update_batch_size)
+                elbo = vime.update_posterior(batch_s, batch_a, batch_s_next)
             metrics['ELBO'].append(elbo)
             metrics['D_KL_median'].append(np.median(info_gains))
             metrics['D_KL_mean'].append(np.mean(info_gains))
             lineplot(metrics['episode'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
             multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
-
-        
 
         # Test current policy
         if episode % conf.test_interval == 0:

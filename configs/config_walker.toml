@@ -1,14 +1,16 @@
 environment = "RoboschoolWalker2d-v1"
 episodes = 10000
+horizon = 500
 replay_buffer_capacity = 1000000
-batch_size = 256
 random_sample_num = 1000
 checkpoint_interval = 10
 checkpoint = ''
 test_interval = 50
 test_times = 5
+agent_update_batch_size = 256
 agent_update_per_step = 1
-vime_update_per_episode = 1
+vime_update_batch_size = 10
+vime_update_per_episode = 100
 
 [agent]
 gamma = 0.99
@@ -22,7 +24,6 @@ hidden_size = 256
 [vime]
 lamb = 0.01
 eta = 0.1
-batch_size = 512
 update_iterations = 500
 hidden_layers = 2
 hidden_layer_size = 64
