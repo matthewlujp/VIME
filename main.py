@@ -84,10 +84,15 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
         path = os.path.join(ckpt_dir, 'checkpoint.pth')
         torch.save(ckpt, path)
 
-        # Save agent model
+        # Save agent model only
         model_ckpt = {'agent': agent.state_dict()}
         model_path = os.path.join(ckpt_dir, 'model.pth')
         torch.save(model_ckpt, model_path)
+
+        # Save metrics only
+        metrics_ckpt = {'metrics': metrics}
+        metrics_path = os.path.join(ckpt_dir, 'metrics.pth')
+        torch.save(metrics_ckpt, metrics_path)
 
     # Train agent
     init_episode = 0 if len(metrics['episode']) == 0 else metrics['episode'][-1] + 1
