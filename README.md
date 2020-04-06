@@ -2,12 +2,12 @@
 PyTorch implementation of "[VIME: Variational Information Maximizing Exploration](https://arxiv.org/abs/1605.09674)".  
 
 
-### Install required packages with pip3
+## Install required packages with pip3
 ```sh
 pip3 install -r requirements.txt
 ```
 
-### Try out
+## Try out
 Train agent in "RoboschoolHalfCheetah-v1".
 A dedicated configuration file for this environment is in configs directory.
 ```sh
@@ -33,12 +33,12 @@ Options
 ```
 
 
-### Implementation notes
+## Implementation notes
 Explanation of implementation is in [Implementation notes of "VIME: Variational Information Maximizing Exploration"](https://qiita.com/matthewlujp/items/84ffa27ab63ac9800824).
 
 
 
-### Evaluations
+## Evaluations
 Performance of reinforcement learning with and without VIME was compared in the following environments.
 * RoboschoolInvertedDoublePendulum-v1
 * RoboschoolWalker2d-v1
