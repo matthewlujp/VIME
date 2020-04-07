@@ -89,12 +89,13 @@ class VIME(nn.Module):
             H = torch.cat([H_mu, H_rho])
         return H
 
-    def _calc_div_kl(self, prev_mu, prev_var):
-        """Calculate D_{KL} [ q(\cdot | \phi) || q(\cdot | \phi_n) ]
-        = \frac{1}{2} \sum^d_i [ \log(var_{ni}) - \log(var_i) + \frac{var_i}{var_{ni}} + \frac{(\mu_i - \mu_{ni})^2}{var_{ni}} ] - \frac{d}{2}
+    def _calc_div_kl(self):
+        """Calculate D_{KL} [ q(\theta | \phi) || p(\theta) ]
+        = \frac{1}{2} \sum^d_i [ \log(var^{init}_i) - \log(var_i) + \frac{var_i}{var^{init}_i} + \frac{(\mu_i - \mu^{init}_i)^2}{var^{init}_i} ] - \frac{d}{2}
         """
         var = (1 + self._params_rho.exp()).log().pow(2)
-        return .5 * ( prev_var.log() - var.log() + var / prev_var + (self._params_mu - prev_mu).pow(2) / prev_var ).sum() - .5 * len(self._params_mu)
+        init_var = torch.ones_like(self._params_rho) * 0.5**2
+        return .5 * ( init_var.log() - var.log() + var / init_var + (self._params_mu).pow(2) / init_var ).sum() - .5 * len(self._params_mu)
 
     def update_posterior(self, batch_s, batch_a, batch_s_next):
         """
@@ -115,7 +116,7 @@ class VIME(nn.Module):
         prev_mu, prev_var = self._params_mu.data, (1 + self._params_rho.data.exp()).log().pow(2)
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
         log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next)
-        div_kl = self._calc_div_kl(prev_mu, prev_var)
+        div_kl = self._calc_div_kl()
 
         elbo = log_likelihood - div_kl
         assert not torch.isnan(elbo).any() and not torch.isinf(elbo).any(), elbo.item()

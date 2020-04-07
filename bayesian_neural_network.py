@@ -18,9 +18,9 @@ class _BayesianLinerLayer(nn.Module):
         self._fan_in, self._fan_out = fan_in, fan_out
 
         self._W_mu = torch.normal(torch.zeros(fan_in, fan_out), torch.ones(fan_in, fan_out)) # N(0, 1)
-        self._W_rho = torch.log(torch.ones(fan_in, fan_out) + np.exp(.5)) # log(1 + e^0.5)
+        self._W_rho = torch.log(torch.exp(torch.ones(fan_in, fan_out) * 0.5) - 1.) # log(e^0.5 - 1) to make \sigma_0 = 0.5
         self._b_mu = torch.normal(torch.zeros(fan_out), torch.ones(fan_out)) # N(0, 1)
-        self._b_rho = torch.log(torch.ones(fan_out) + np.exp(.5)) # log(1 + e^0.5)
+        self._b_rho = torch.log(np.exp(torch.ones(fan_out) * .5) - 1.) # log(e^0.5 - 1) to make \sigma_0 = 0.5
 
         self._W_var, self._b_var = self._rho2var(self._W_rho), self._rho2var(self._b_rho)
         self._parameter_number = _elements(self._W_mu) + _elements(self._b_mu)
@@ -148,5 +148,5 @@ class BNN:
         # = log N(output_batch | output_mean, exp(output_logvar))
         # = -\frac{1}{2} \sum^d_j [ logvar_j + (s_next_j - output_mean)^2 exp(- logvar_j) ]  - \frac{d}{2} \log (2\pi)
         ll = - .5 * ( output_logvar + (output_batch - output_mean).pow(2) * (- output_logvar).exp() ).sum(dim=1) - .5 * self._output_size * np.log(2 * np.pi)
-        return ll.sum()
+        return ll.mean()
 
