@@ -16,10 +16,10 @@ class SparseHalfCheetah(gym.Env):
         return np.concatenate([obs, np.array(self._env.parts['torso'].pose().xyz())])
 
     def step(self, action):
-        s, _, _, info = self._env.step(action)
+        s, _, done, info = self._env.step(action)
         moved_distance = self._env.body_xyz[0] - self._env.start_pos_x
         r = float(moved_distance >= self._target_distance)
-        return self._modified_observation(s), r, False, info
+        return self._modified_observation(s), r, done, info
         
     def reset(self):
         s = self._env.reset()
