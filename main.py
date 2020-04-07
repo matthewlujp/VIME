@@ -20,7 +20,7 @@ from vime import VIME
 import envs  # custom environments
 
 
-def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, visualize_interval: int):
+def train(config_file_path: str, save_dir: str, use_vime: bool, random_policy: bool, device: str, visualize_interval: int):
     conf_d = toml.load(open(config_file_path))
     conf = namedtuple('Config', conf_d.keys())(*conf_d.values())
 
@@ -62,6 +62,11 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
     # Set up environment
     print("----------------------------------------\nTrain in {}\n----------------------------------------".format(conf.environment))
     env = gym.make(conf.environment)
+
+    if use_vime:
+        print("Use VIME")
+    if random_policy:
+        print("Keep using random policy.")
 
     # Training set up
     agent = SAC(env.observation_space, env.action_space, device, **conf.agent)
@@ -110,7 +115,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
         q1_losses, q2_losses, policy_losses, alpha_losses, alphas = [],[],[],[],[]
 
         for t in range(conf.horizon):
-            if len(memory) < conf.random_sample_num:
+            if len(memory) < conf.random_sample_num or random_policy:
                 a = env.action_space.sample()
             else:
                 a = agent.select_action(o, eval=False)
@@ -136,7 +141,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
             o = o_next
 
             # Update agent
-            if len(memory) >= conf.random_sample_num:
+            if len(memory) >= conf.random_sample_num and not random_policy:
                 for _ in range(conf.agent_update_per_step):
                     batch_data = memory.sample(conf.agent_update_batch_size)
                     q1_loss, q2_loss, policy_loss, alpha_loss, alpha = agent.update_parameters(batch_data, agent_update_count)
@@ -176,7 +181,7 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
             lineplot(metrics['episode'][-len(metrics['curiosity_reward']):], metrics['curiosity_reward'], 'curiosity_reward', log_dir)
             lineplot(metrics['episode'][-len(metrics['likelihood']):], metrics['likelihood'], 'likelihood', log_dir)
         # Agent update related metrics
-        if len(policy_losses) > 0:
+        if len(policy_losses) > 0 and not random_policy:
             metrics['q1_loss'].append(np.mean(q1_losses))
             metrics['policy_loss'].append(np.mean(policy_losses))
             metrics['alpha_loss'].append(np.mean(alpha_losses))
@@ -270,6 +275,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Test trying a walker.')
     parser.add_argument('--config', default='default_config.toml', help='Config file path')
     parser.add_argument('--save-dir', default=os.path.join('results', 'test'), help='Save directory')
+    parser.add_argument('--random-policy', action='store_true', help='Do not update policy and keep selecting random action.')
     parser.add_argument('--vime', action='store_true', help='Whether to use VIME.')
     parser.add_argument('--visualize-interval', default=25, type=int, help='Interval to draw graphs of metrics.')
     parser.add_argument('--device', default='cpu', choices={'cpu', 'cuda:0', 'cuda:1', 'cuda:2', 'cuda:3'}, help='Device for computation.')
@@ -281,4 +287,4 @@ if __name__ == '__main__':
     if args.eval:
         evaluate(args.config, args.model_filepath, args.render)
     else:
-        train(args.config, args.save_dir, args.vime, args.device, args.visualize_interval)
+        train(args.config, args.save_dir, args.vime, args.random_policy, args.device, args.visualize_interval)
