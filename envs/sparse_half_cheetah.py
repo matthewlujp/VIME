@@ -14,7 +14,7 @@ class SparseHalfCheetah(gym.Env):
         s, _, done, info = self._env.step(action)
         moved_distance = self._env.body_xyz[0] - self._env.start_pos_x
         r = float(moved_distance >= self._target_distance)
-        return s, r, done, info
+        return s, r, False, info
         
     def reset(self):
         return self._env.reset()

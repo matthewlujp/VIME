@@ -113,7 +113,6 @@ class VIME(nn.Module):
         batch_a = torch.FloatTensor(batch_a).to(self._device)
         batch_s_next = torch.FloatTensor(batch_s_next).to(self._device)
 
-        prev_mu, prev_var = self._params_mu.data, (1 + self._params_rho.data.exp()).log().pow(2)
         self._dynamics_model.set_params(self._params_mu, self._params_rho)
         log_likelihood = self._dynamics_model.log_likelihood(torch.cat([batch_s, batch_a], dim=1), batch_s_next)
         div_kl = self._calc_div_kl()
