@@ -193,10 +193,11 @@ def train(config_file_path: str, save_dir: str, use_vime: bool, device: str, vis
                 batch_s, batch_a, _, batch_s_next, _ = memory.sample(conf.vime_update_batch_size)
                 elbo = vime.update_posterior(batch_s, batch_a, batch_s_next)
             metrics['ELBO'].append(elbo)
-            metrics['D_KL_median'].append(np.median(info_gains))
-            metrics['D_KL_mean'].append(np.mean(info_gains))
             lineplot(metrics['episode'][-len(metrics['ELBO']):], metrics['ELBO'], 'ELBO', log_dir)
-            multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
+            if len(info_gains) > 0:
+                metrics['D_KL_median'].append(np.median(info_gains))
+                metrics['D_KL_mean'].append(np.mean(info_gains))
+                multiple_lineplot(metrics['episode'][-len(metrics['D_KL_median']):], np.array([metrics['D_KL_median'], metrics['D_KL_mean']]).T, 'D_KL', ['median', 'mean'], log_dir)
 
         # Test current policy
         if episode % conf.test_interval == 0:
