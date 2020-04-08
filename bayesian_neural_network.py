@@ -28,8 +28,8 @@ class _BayesianLinerLayer(nn.Module):
 
     @staticmethod
     def _rho2var(rho):
-
         return torch.log(1. + torch.exp(rho)).pow(2)
+        
     @property
     def parameter_number(self):
         return self._parameter_number

@@ -15,6 +15,9 @@ class SparseHalfCheetah(gym.Env):
     def _modified_observation(self, obs):
         return np.concatenate([obs, np.array(self._env.parts['torso'].pose().xyz())])
 
+    def position(self):
+        return self._env.parts['torso'].pose().xyz()
+
     def step(self, action):
         s, _, done, info = self._env.step(action)
         moved_distance = self._env.body_xyz[0] - self._env.start_pos_x
