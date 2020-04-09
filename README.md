@@ -50,11 +50,11 @@ In HalfCheetah, +1.0 was provided as a reward when a body moved more than 5 unit
 
 |InvertedDoublePendulum-v1|Walker2d-v1|
 |---|---|
-|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|
+|![](https://user-images.githubusercontent.com/13263381/78898710-35e09e80-7aaf-11ea-8190-e08189f42e08.png)|![](https://user-images.githubusercontent.com/13263381/78898716-37aa6200-7aaf-11ea-9f21-a4ef0ce8c4e6.png)|
 
 |Humanoid-v1|HalfCheetah-v1 (sparse reward)|
 |---|---|
-|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|![](https://user-images.githubusercontent.com/13263381/78500530-028dcf00-7792-11ea-8bcb-98d4ce43c93f.png)|
+|![](https://user-images.githubusercontent.com/13263381/78898714-3711cb80-7aaf-11ea-85c1-4a560ebb8604.png)|![](https://user-images.githubusercontent.com/13263381/78898715-3711cb80-7aaf-11ea-8b6e-525f74e76e08.png)|
 
 
 ##### Note on modifying environment
