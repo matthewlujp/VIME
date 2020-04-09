@@ -45,7 +45,7 @@ Performance of reinforcement learning with and without VIME was compared in the 
 * RoboschoolHumanoid-v1
 * RoboschoolHalfCheetah-v1 (with sparse reward)
 
-In HalfCheetah, +1.0 was provided as a reward when a body moved more than 5 units.
+In HalfCheetah, +1.0 was provided as a reward when a body moved more than 2.5 units.
 [Soft actor-critic (SAC)](https://arxiv.org/abs/1812.05905) is used as a base method.
 
 |InvertedDoublePendulum-v1|Walker2d-v1|
@@ -55,6 +55,7 @@ In HalfCheetah, +1.0 was provided as a reward when a body moved more than 5 unit
 |Humanoid-v1|HalfCheetah-v1 (sparse reward)|
 |---|---|
 |![](https://user-images.githubusercontent.com/13263381/78898714-3711cb80-7aaf-11ea-85c1-4a560ebb8604.png)|![](https://user-images.githubusercontent.com/13263381/78898715-3711cb80-7aaf-11ea-8b6e-525f74e76e08.png)|
+
 
 
 ##### Note on modifying environment
